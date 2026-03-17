@@ -1,0 +1,13 @@
+# GPT-SoVITS TTS Service 설정
+# 기본값은 코드에 내장. 변경이 필요한 항목만 기재.
+
+# 서버 설정 (기본: host=0.0.0.0, port=9880)
+# service:
+#   host: 0.0.0.0
+#   port: 9880
+
+# voice 디렉토리 루트 (하위에서 voice.yaml을 스캔)
+voices_dir: data/voice
+
+# 서버 시작 시 기본 로드할 voice (optional)
+default_voice: dahwi

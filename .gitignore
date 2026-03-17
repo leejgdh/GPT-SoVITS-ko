@@ -1,0 +1,25 @@
+# 대용량 모델/데이터
+GPT_SoVITS/pretrained_models/
+GPT_SoVITS/text/G2PWModel/g2pW.onnx
+GPT_SoVITS/text/G2PWModel_1.1.zip
+GPT_SoVITS/text/engdict_cache.pickle
+*.pth
+*.ckpt
+*.bin
+*.onnx
+*.safetensors
+
+# 데이터/로그
+/data/*
+!/data/.gitkeep
+logs/*
+!logs/.gitkeep
+output/*
+!output/.gitkeep
+
+# 레거시 경로 (data/models/로 이동됨)
+tools/uvr5/uvr5_weights/
+tools/asr/models/
+tools/denoise-model/
+
+.claude/

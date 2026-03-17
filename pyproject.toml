@@ -1,0 +1,94 @@
+[project]
+name = "gpt-sovits"
+version = "0.1.0"
+description = "GPT-SoVITS Korean TTS Service"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # --- Server ---
+    "fastapi[standard]>=0.115.2",
+    "uvicorn[standard]",
+    "loguru",
+    "pyyaml",
+    "pydantic<=2.10.6",
+    # --- ML Core ---
+    "torch>=2.10",
+    "torchaudio>=2.10",
+    "numpy>=1.26,<2.0",
+    "scipy",
+    "librosa==0.10.2",
+    "numba",
+    "pytorch-lightning>=2.4",
+    "transformers>=4.43,<=4.50",
+    "peft<0.18.0",
+    "sentencepiece",
+    "rotary_embedding_torch",
+    "x_transformers",
+    "torchmetrics<=1.5",
+    "einops",
+    # --- Audio ---
+    "soundfile",
+    "ffmpeg-python",
+    # --- Text Processing ---
+    "cn2an",
+    "pypinyin",
+    "pyopenjtalk>=0.4.1",
+    "g2p_en",
+    "g2pk2",
+    "ko_pron",
+    "jieba_fast",
+    "jieba",
+    "split-lang",
+    "fast_langdetect>=0.3.1",
+    "wordsegment",
+    "opencc",
+    "ToJyutping",
+    # --- Misc ---
+    "psutil",
+    "tqdm",
+    "python-mecab-ko>=1.3.7",
+]
+
+[project.optional-dependencies]
+pipeline = [
+    # --- Audio (학습 전처리) ---
+    "av>=11",
+    "torchcodec",
+    # --- ASR ---
+    "faster-whisper",
+    "ctranslate2>=4.0,<5",
+    "funasr==1.0.27",
+    "modelscope>=1.20",
+    "datasets>=2.18,<3.0",
+    "pandas>=2.2",
+    "addict",
+    "simplejson",
+    "sortedcontainers",
+    "setuptools<81",
+    "chardet",
+    # --- Misc (학습/분석) ---
+    "scikit-learn",
+    "tensorboard",
+    "onnxruntime-gpu; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "matplotlib>=3.10.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.uv]
+index-strategy = "unsafe-best-match"
+
+# Jetson 환경에서는 아래 인덱스를 제거하고 JetPack PyTorch를 사용:
+#   pip install --no-cache <NVIDIA JetPack PyTorch wheel URL>
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+torchaudio = { index = "pytorch-cu126" }
