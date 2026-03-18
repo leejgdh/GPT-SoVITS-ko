@@ -266,6 +266,8 @@
 <div class="toolbar">
   <label>서버</label>
   <input type="text" id="server-url" value="http://localhost:9880" placeholder="http://localhost:9880">
+  <label>Voice</label>
+  <select id="voice-select"><option value="">선택...</option></select>
   <div class="toolbar-right">
     <span class="badge good"      id="cnt-good">0</span>
     <span class="badge bad"        id="cnt-bad">0</span>
@@ -358,10 +360,29 @@ $('#server-url').addEventListener('change', init);
 
 document.addEventListener('DOMContentLoaded', init);
 
+let currentVoice = '';
+
 async function init() {
   BASE = $('#server-url').value.replace(/\/+$/, '');
   try {
-    await loadFiles();
+    const vData = await api('GET', '/voices');
+    const sel = $('#voice-select');
+    sel.innerHTML = '<option value="">선택...</option>';
+    (vData.voices || []).forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.name;
+      opt.textContent = v.name;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', () => {
+      currentVoice = sel.value;
+      if (currentVoice) loadFiles();
+    });
+    if (vData.voices && vData.voices.length === 1) {
+      sel.value = vData.voices[0].name;
+      currentVoice = sel.value;
+      await loadFiles();
+    }
     toast('서버 연결됨');
   } catch {
     toast('서버 연결 실패', 'error');
@@ -371,7 +392,8 @@ async function init() {
 // ── 파일 로드 ──
 
 async function loadFiles() {
-  const data = await api('GET', '/voice-checker/files');
+  if (!currentVoice) return;
+  const data = await api('GET', `/voice-checker/${encodeURIComponent(currentVoice)}/files`);
   files = data.files || [];
   updateCounts(data.counts || {});
   renderFiles();
@@ -487,7 +509,7 @@ async function loadWaveform(name, canvas) {
   try {
     let buf = waveCache.get(name);
     if (!buf) {
-      const res = await fetch(`${BASE}/voice-checker/files/${encodeURIComponent(name)}/audio`);
+      const res = await fetch(`${BASE}/voice-checker/${encodeURIComponent(currentVoice)}/files/${encodeURIComponent(name)}/audio`);
       const arrayBuf = await res.arrayBuffer();
       buf = await audioCtx.decodeAudioData(arrayBuf);
       waveCache.set(name, buf);
@@ -543,7 +565,7 @@ function togglePlay(name) {
     return;
   }
   playingName = name;
-  audio.src = `${BASE}/voice-checker/files/${encodeURIComponent(name)}/audio`;
+  audio.src = `${BASE}/voice-checker/${encodeURIComponent(currentVoice)}/files/${encodeURIComponent(name)}/audio`;
   audio.play().catch(() => toast('재생 실패', 'error'));
   renderFiles();
 }
@@ -559,7 +581,7 @@ async function setLabel(name, label) {
   const file = files.find(f => f.name === name);
   if (file && file.label === label) return;
   try {
-    await api('PATCH', `/voice-checker/files/${encodeURIComponent(name)}/label`, { label });
+    await api('PATCH', `/voice-checker/${encodeURIComponent(currentVoice)}/files/${encodeURIComponent(name)}/label`, { label });
     if (file) file.label = label;
     updateCountsFromFiles();
     renderFiles();

@@ -1,4 +1,8 @@
-"""Voice Checker API — CNN 모델 학습용 오디오 라벨링 (good/bad)."""
+"""Voice Checker API — CNN 모델 학습용 오디오 라벨링 (good/bad).
+
+오디오 파일은 data/voice/{voice}/step1/03_vocal/ 에서 직접 읽는다.
+라벨은 data/voice/{voice}/quality_labels.json 에 저장한다.
+"""
 from __future__ import annotations
 
 import json
@@ -26,6 +30,9 @@ _LABELER_HTML = os.path.join(
     "tools", "voice-checker", "tools", "labeler.html",
 )
 
+_AUDIO_EXTS = {".wav", ".flac", ".mp3", ".ogg", ".m4a"}
+_LABELS_FILENAME = "quality_labels.json"
+
 
 # ---------------------------------------------------------------------------
 # 헬퍼
@@ -36,27 +43,53 @@ def _get_context(request: Request) -> ServiceContext:
     return request.app.state.context
 
 
-def _require_vc(request: Request) -> tuple[ServiceContext, Path, Path]:
-    """Voice Checker 설정이 있는지 확인하고 (ctx, data_dir, labels_file)을 반환."""
+def _require_vc(request: Request) -> ServiceContext:
     ctx = _get_context(request)
-    if ctx.vc_data_dir is None or ctx.vc_labels_file is None:
+    if ctx.config.voice_checker is None:
         raise HTTPException(
             503, detail="Voice Checker가 설정되지 않았습니다. conf.yaml에 voice_checker 섹션을 추가하세요.",
         )
-    return ctx, ctx.vc_data_dir, ctx.vc_labels_file
+    return ctx
 
 
-def _load_labels(labels_file: Path) -> list[dict]:
-    if not labels_file.exists():
-        return []
-    with open(labels_file, encoding="utf-8") as f:
-        return json.load(f).get("files", [])
+def _get_vocal_dir(ctx: ServiceContext, voice: str) -> Path:
+    """voice의 step1/03_vocal 디렉토리 경로를 반환한다."""
+    vocal_dir = Path(ctx.config.voices_dir) / voice / "step1" / "03_vocal"
+    if not vocal_dir.is_dir():
+        raise HTTPException(404, detail=f"'{voice}' 의 step1/03_vocal 디렉토리가 없습니다")
+    return vocal_dir
 
 
-def _save_labels(labels_file: Path, files: list[dict]) -> None:
-    labels_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(labels_file, "w", encoding="utf-8") as f:
+def _get_labels_path(ctx: ServiceContext, voice: str) -> Path:
+    return Path(ctx.config.voices_dir) / voice / _LABELS_FILENAME
+
+
+def _load_labels(labels_path: Path) -> dict[str, str]:
+    """labels를 {filename: label} dict로 반환한다."""
+    if not labels_path.exists():
+        return {}
+    with open(labels_path, encoding="utf-8") as f:
+        data = json.load(f)
+    return {entry["name"]: entry["label"] for entry in data.get("files", [])}
+
+
+def _save_labels(labels_path: Path, labels: dict[str, str]) -> None:
+    labels_path.parent.mkdir(parents=True, exist_ok=True)
+    files = [{"name": name, "label": label} for name, label in sorted(labels.items())]
+    with open(labels_path, "w", encoding="utf-8") as f:
         json.dump({"files": files}, f, ensure_ascii=False, indent=2)
+
+
+def _scan_audio_files(vocal_dir: Path, labels: dict[str, str]) -> list[dict]:
+    """vocal_dir의 오디오 파일을 스캔하고 라벨과 병합한다."""
+    result = []
+    for f in sorted(vocal_dir.iterdir()):
+        if f.is_file() and f.suffix.lower() in _AUDIO_EXTS:
+            result.append({
+                "name": f.name,
+                "label": labels.get(f.name, "unlabeled"),
+            })
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -86,23 +119,27 @@ async def voice_checker_labeling_page(request: Request):
 # ---------------------------------------------------------------------------
 
 
-@api_router.get("/files")
-async def list_files(request: Request):
-    """파일 목록 + 라벨 + 통계를 반환한다."""
-    _, _, labels_file = _require_vc(request)
-    labels = _load_labels(labels_file)
+@api_router.get("/{voice}/files")
+async def list_files(voice: str, request: Request):
+    """voice의 step1/03_vocal 오디오 파일 목록 + 라벨 + 통계를 반환한다."""
+    ctx = _require_vc(request)
+    vocal_dir = _get_vocal_dir(ctx, voice)
+    labels = _load_labels(_get_labels_path(ctx, voice))
+    files = _scan_audio_files(vocal_dir, labels)
+
     counts = {"good": 0, "bad": 0, "unlabeled": 0}
-    for entry in labels:
-        lbl = entry.get("label", "unlabeled")
-        counts[lbl] = counts.get(lbl, 0) + 1
-    return {"files": labels, "counts": counts}
+    for entry in files:
+        counts[entry["label"]] = counts.get(entry["label"], 0) + 1
+
+    return {"files": files, "counts": counts}
 
 
-@api_router.get("/files/{name}/audio")
-async def get_audio(name: str, request: Request):
+@api_router.get("/{voice}/files/{name}/audio")
+async def get_audio(voice: str, name: str, request: Request):
     """오디오 파일을 스트리밍한다."""
-    _, data_dir, _ = _require_vc(request)
-    audio_path = data_dir / name
+    ctx = _require_vc(request)
+    vocal_dir = _get_vocal_dir(ctx, voice)
+    audio_path = vocal_dir / name
     if not audio_path.exists():
         raise HTTPException(404, detail=f"파일 없음: {name}")
     return FileResponse(audio_path, media_type="audio/wav")
@@ -112,24 +149,20 @@ class LabelUpdate(BaseModel):
     label: str
 
 
-@api_router.patch("/files/{name}/label")
-async def update_label(name: str, body: LabelUpdate, request: Request):
+@api_router.patch("/{voice}/files/{name}/label")
+async def update_label(voice: str, name: str, body: LabelUpdate, request: Request):
     """파일의 라벨을 변경한다."""
     if body.label not in ("good", "bad", "unlabeled"):
         raise HTTPException(400, detail="label은 good, bad, unlabeled 중 하나여야 합니다")
 
-    _, _, labels_file = _require_vc(request)
-    labels = _load_labels(labels_file)
-    found = False
-    for entry in labels:
-        if entry["name"] == name:
-            entry["label"] = body.label
-            found = True
-            break
-
-    if not found:
+    ctx = _require_vc(request)
+    vocal_dir = _get_vocal_dir(ctx, voice)
+    if not (vocal_dir / name).exists():
         raise HTTPException(404, detail=f"파일 없음: {name}")
 
-    _save_labels(labels_file, labels)
-    logger.info("{} -> {}", name, body.label)
+    labels = _load_labels(_get_labels_path(ctx, voice))
+    labels[name] = body.label
+    _save_labels(_get_labels_path(ctx, voice), labels)
+
+    logger.info("{}/{} -> {}", voice, name, body.label)
     return {"name": name, "label": body.label}
