@@ -61,9 +61,9 @@ def _setup_logger(
     if log_dir is not None:
         log_dir.mkdir(parents=True, exist_ok=True)
         logger.add(
-            str(log_dir / f"{root_name}.log"),
+            str(log_dir / "gpt-sovits_{time:YYYY-MM-DD}.log"),
             format=_FILE_FMT, level="DEBUG",
-            rotation="10 MB", retention=5, encoding="utf-8",
+            rotation="00:00", retention="30 days", encoding="utf-8",
         )
 
     class _InterceptHandler(_logging.Handler):
