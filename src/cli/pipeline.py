@@ -219,22 +219,22 @@ def run_classify(voice_dir: str, config_path: str = "conf.yaml") -> None:
 
 
 def run_get_text(voice_dir: str, version: str) -> None:
-    _run([sys.executable, "scripts/preprocessing/1-get-text.py",
+    _run([sys.executable, "scripts/preprocessing/get_text.py",
           "--voice-dir", voice_dir, "--version", version], "get-text")
 
 
 def run_get_hubert(voice_dir: str, version: str) -> None:
-    _run([sys.executable, "scripts/preprocessing/2-get-hubert-wav32k.py",
+    _run([sys.executable, "scripts/preprocessing/get_hubert_wav32k.py",
           "--voice-dir", voice_dir, "--version", version], "get-hubert")
 
 
 def run_get_sv(voice_dir: str, version: str) -> None:
-    _run([sys.executable, "scripts/preprocessing/2-get-sv.py",
+    _run([sys.executable, "scripts/preprocessing/get_sv.py",
           "--voice-dir", voice_dir, "--version", version], "get-sv")
 
 
 def run_get_semantic(voice_dir: str, version: str) -> None:
-    _run([sys.executable, "scripts/preprocessing/3-get-semantic.py",
+    _run([sys.executable, "scripts/preprocessing/get_semantic.py",
           "--voice-dir", voice_dir, "--version", version], "get-semantic")
 
 
