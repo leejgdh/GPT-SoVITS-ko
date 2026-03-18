@@ -38,11 +38,8 @@
 git clone https://github.com/leejgdh/GPT-SoVITS-ko.git
 cd GPT-SoVITS-ko
 
-# 서버 + 추론 의존성
+# 전체 의존성 설치 (서버 + 파이프라인)
 uv sync
-
-# 파이프라인 의존성 포함 (ASR, 학습, 전처리)
-uv sync --extra pipeline
 ```
 
 **설정 파일 생성:**
