@@ -5,9 +5,10 @@ import torch
 import torchaudio
 from loguru import logger
 
-from src.config.config import AudioConfig, Config
-from src.data.transforms import MelSpectrogramTransform
-from src.model.cnn import AudioQualityCNN
+from src.config.config import VCAudioConfig as AudioConfig
+from src.config.config import VoiceCheckerConfig as Config
+from vc.data.transforms import MelSpectrogramTransform
+from vc.model.cnn import AudioQualityCNN
 
 
 class VoiceQualityPredictor:

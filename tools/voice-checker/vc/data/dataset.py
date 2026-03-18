@@ -9,7 +9,7 @@ import torchaudio
 from loguru import logger
 from torch.utils.data import Dataset
 
-from src.data.transforms import AudioAugmentation, MelSpectrogramTransform
+from vc.data.transforms import AudioAugmentation, MelSpectrogramTransform
 
 
 class AudioQualityDataset(Dataset):

@@ -95,10 +95,10 @@ def _load_voice_checker(model_path: str):
     if vc_root not in sys.path:
         sys.path.insert(0, vc_root)
     try:
-        from src.config.config import Config
-        from src.inference.predictor import VoiceQualityPredictor
+        from src.config.config import VoiceCheckerConfig
+        from vc.inference.predictor import VoiceQualityPredictor
 
-        predictor = VoiceQualityPredictor(model_path, Config())
+        predictor = VoiceQualityPredictor(model_path, VoiceCheckerConfig())
         return predictor
     except Exception as e:
         logger.warning("voice-checker 모델 로드 실패: {}", e)

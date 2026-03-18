@@ -34,10 +34,14 @@ _FILE_FMT = (
 _PROJECT_ROOT = Path(__file__).resolve().parent
 # voice-checker/ → tools/ → gpt-sovits/
 _GPT_SOVITS_ROOT = _PROJECT_ROOT.parent.parent
-_DATA_DIR = _GPT_SOVITS_ROOT / "data" / "voice-checker"
-_LABELS_FILE = _DATA_DIR / "labels.json"
-_MODELS_DIR = _DATA_DIR / "models"
+
+# 루트 src/ import를 위해 GPT-SoVITS 루트를 sys.path에 추가
+if str(_GPT_SOVITS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_GPT_SOVITS_ROOT))
+_VOICES_DIR = _GPT_SOVITS_ROOT / "data" / "voice"
+_MODELS_DIR = _GPT_SOVITS_ROOT / "data" / "voice-checker" / "models"
 _LOG_DIR = _GPT_SOVITS_ROOT / "logs"
+_QUALITY_LABELS = "quality_labels.json"
 _AUDIO_EXTS = {".wav", ".flac", ".mp3", ".ogg", ".m4a"}
 
 
@@ -188,18 +192,8 @@ def _cmd_serve(args: argparse.Namespace) -> None:
 
 
 def _load_vc_config(config_path: Path):
-    """루트 conf.yaml에서 voice_checker 설정을 로드한다.
-
-    VoiceCheckerConfig를 반환. 미설정 시 기본값.
-    """
-    sys.path.insert(0, str(_GPT_SOVITS_ROOT))
-    try:
-        from src.config.config import (
-            VoiceCheckerConfig,
-            load_config as load_root_config,
-        )
-    finally:
-        sys.path.remove(str(_GPT_SOVITS_ROOT))
+    """루트 conf.yaml에서 voice_checker 설정을 로드한다."""
+    from src.config.config import VoiceCheckerConfig, load_config as load_root_config
 
     if not config_path.exists():
         return VoiceCheckerConfig()
@@ -209,8 +203,8 @@ def _load_vc_config(config_path: Path):
 
 
 def _cmd_train(args: argparse.Namespace) -> None:
-    """labels.json 기반으로 CNN 모델을 학습한다."""
-    from src.training.trainer import run_training
+    """quality_labels.json 기반으로 CNN 모델을 학습한다."""
+    from vc.training.trainer import run_training
 
     config = _load_vc_config(Path(args.config))
 
@@ -220,7 +214,15 @@ def _cmd_train(args: argparse.Namespace) -> None:
         log_dir=_LOG_DIR,
     )
 
-    run_training(config, _DATA_DIR, _LABELS_FILE, _MODELS_DIR)
+    voice_dir = Path(args.voice_dir)
+    data_dir = voice_dir / "step1" / "03_vocal"
+    labels_file = voice_dir / _QUALITY_LABELS
+
+    if not data_dir.is_dir():
+        logger.error("오디오 디렉토리가 없습니다: {}", data_dir)
+        sys.exit(1)
+
+    run_training(config, data_dir, labels_file, _MODELS_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +232,7 @@ def _cmd_train(args: argparse.Namespace) -> None:
 
 def _cmd_predict(args: argparse.Namespace) -> None:
     """학습된 모델로 오디오 품질을 예측한다."""
-    from src.inference.predictor import VoiceQualityPredictor
+    from vc.inference.predictor import VoiceQualityPredictor
 
     config = _load_vc_config(Path(args.config))
 
@@ -301,6 +303,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sp_train = sub.add_parser("train", help="CNN 모델 학습")
     sp_train.add_argument("-v", "--verbose", action="store_true")
     sp_train.add_argument("-c", "--config", default="conf.yaml")
+    sp_train.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더 (예: data/voice/lunabi)")
 
     # --- predict ---
     sp_predict = sub.add_parser("predict", help="오디오 품질 예측")
