@@ -1,5 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
 # 로컬 설정 (conf.example.yaml을 복사하여 사용)
 conf.yaml
+
+# uv
+uv.lock
 
 # 대용량 모델/데이터
 GPT_SoVITS/pretrained_models/
