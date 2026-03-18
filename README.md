@@ -38,8 +38,11 @@
 git clone https://github.com/leejgdh/GPT-SoVITS-ko.git
 cd GPT-SoVITS-ko
 
-# 전체 의존성 설치 (서버 + 파이프라인)
+# 전체 의존성 설치 (서버 + 파이프라인 + Voice Checker)
 uv sync
+
+# 서버 + 추론만 (파이프라인/학습 의존성 제외, 경량 설치)
+uv sync --only-group serve
 ```
 
 **설정 파일 생성:**
@@ -259,20 +262,17 @@ uv run python main.py serve
 멜 스펙트로그램 기반 3층 CNN (~83K params)으로, 독립 실행 또는 ASR 파이프라인 연동이 가능합니다.
 
 ```bash
-cd tools/voice-checker
-cp conf.example.yaml conf.yaml
-
 # 1. 오디오 수집
-uv run python main.py import /path/to/audio
+uv run python tools/voice-checker/main.py import /path/to/audio
 
 # 2. 라벨링 UI에서 good/bad 분류
-uv run python main.py serve
+uv run python tools/voice-checker/main.py serve
 
 # 3. CNN 학습
-uv run python main.py train
+uv run python tools/voice-checker/main.py train
 
 # 4. 품질 예측
-uv run python main.py predict /path/to/audio -m models/best_model.pth
+uv run python tools/voice-checker/main.py predict /path/to/audio -m tools/voice-checker/models/best_model.pth
 ```
 
 **ASR 파이프라인 연동:**
@@ -281,6 +281,9 @@ uv run python main.py predict /path/to/audio -m models/best_model.pth
 uv run python scripts/data_preparation/asr_whisper.py \
   --voice-dir data/voice/dahwi \
   --voice-checker-model tools/voice-checker/models/best_model.pth
+```
+
+> Voice Checker는 루트 pyproject.toml의 의존성을 공유합니다. 별도 설치가 필요 없습니다.
 ```
 
 CNN 통과 + ASR 텍스트 존재 시 라벨 상태를 `approved`로 자동 마킹합니다.
@@ -309,6 +312,15 @@ default_voice: dahwi           # 서버 시작 시 기본 로드할 voice (선�
 # service:                     # 서버 설정 (선택, CLI 인자로 오버라이드 가능)
 #   host: 0.0.0.0
 #   port: 9880
+
+# voice_checker:               # Voice Checker 설정 (선택)
+#   training:
+#     epochs: 50
+#     batch_size: 16
+#   inference:
+#     model_path: "tools/voice-checker/models/best_model.pth"
+#   service:
+#     port: 9890
 ```
 
 ---

@@ -66,6 +66,48 @@ dependencies = [
     "matplotlib>=3.10.8",
 ]
 
+[project.optional-dependencies]
+# 서버 + 추론만 필요한 경우 (파이프라인/학습 의존성 제외)
+serve = [
+    "fastapi[standard]>=0.115.2",
+    "uvicorn[standard]",
+    "loguru",
+    "pyyaml",
+    "pydantic<=2.10.6",
+    "torch>=2.10",
+    "torchaudio>=2.10",
+    "numpy>=1.26,<2.0",
+    "scipy",
+    "librosa==0.10.2",
+    "numba",
+    "pytorch-lightning>=2.4",
+    "transformers>=4.43,<=4.50",
+    "peft<0.18.0",
+    "sentencepiece",
+    "rotary_embedding_torch",
+    "x_transformers",
+    "torchmetrics<=1.5",
+    "einops",
+    "soundfile",
+    "ffmpeg-python",
+    "cn2an",
+    "pypinyin",
+    "pyopenjtalk>=0.4.1",
+    "g2p_en",
+    "g2pk2",
+    "ko_pron",
+    "jieba_fast",
+    "jieba",
+    "split-lang",
+    "fast_langdetect>=0.3.1",
+    "wordsegment",
+    "opencc",
+    "ToJyutping",
+    "psutil",
+    "tqdm",
+    "python-mecab-ko>=1.3.7",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
