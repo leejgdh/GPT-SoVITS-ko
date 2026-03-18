@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -25,6 +26,8 @@ class ServiceContext:
         self._voices: dict[str, VoiceProfile] = {}
         self._current_voice: str | None = None
         self._lock = asyncio.Lock()
+        self._vc_data_dir: Path | None = None
+        self._vc_labels_file: Path | None = None
 
     @classmethod
     def create(cls, config: Config) -> ServiceContext:
@@ -51,6 +54,13 @@ class ServiceContext:
                     config.default_voice,
                 )
 
+        # voice_checker 설정이 있으면 데이터 경로 설정
+        if config.voice_checker is not None:
+            project_root = Path(__file__).resolve().parents[2]
+            ctx._vc_data_dir = project_root / "tools" / "voice-checker" / "data"
+            ctx._vc_labels_file = ctx._vc_data_dir / "labels.json"
+            logger.info("Voice Checker 활성화: {}", ctx._vc_data_dir)
+
         return ctx
 
     @property
@@ -72,6 +82,16 @@ class ServiceContext:
     def current_voice(self) -> str | None:
         """현재 로드된 voice 이름."""
         return self._current_voice
+
+    @property
+    def vc_data_dir(self) -> Path | None:
+        """Voice Checker 데이터 디렉토리."""
+        return self._vc_data_dir
+
+    @property
+    def vc_labels_file(self) -> Path | None:
+        """Voice Checker labels.json 경로."""
+        return self._vc_labels_file
 
     @property
     def lock(self) -> asyncio.Lock:

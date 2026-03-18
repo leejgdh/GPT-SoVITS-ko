@@ -169,34 +169,12 @@ def _cmd_import(args: argparse.Namespace) -> None:
 
 
 def _cmd_serve(args: argparse.Namespace) -> None:
-    """라벨링 UI 서버를 실행한다."""
-    import uvicorn
-
-    from src.config.config import Config, load_config
-
-    config_path = Path(args.config)
-    config = load_config(config_path) if config_path.exists() else Config()
-
-    log_level = "DEBUG" if args.verbose else config.log_level
-    _setup_logger(
-        "voice_checker",
-        level=log_level,
-        log_dir=_PROJECT_ROOT / "logs",
-    )
-
-    host = args.host or config.service.host
-    port = args.port or config.service.port
-
-    os.environ["VOICE_CHECKER_CONFIG"] = str(config_path)
-    logger.info("Voice Checker 라벨링 서버 시작: {}:{}", host, port)
-
-    uvicorn.run(
-        "src.server.app:create_app",
-        factory=True,
-        host=host,
-        port=port,
-        log_level=log_level.lower(),
-        access_log=False,
+    """라벨링 UI는 메인 서버에 통합되었습니다."""
+    _setup_logger("voice_checker", level="INFO")
+    logger.warning(
+        "serve 커맨드는 메인 서버에 통합되었습니다.\n"
+        "  → 프로젝트 루트에서 'python main.py serve' 실행 후\n"
+        "  → http://localhost:9880/quality-check 접속",
     )
 
 

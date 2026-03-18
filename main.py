@@ -353,6 +353,12 @@ def _cmd_step1(args: argparse.Namespace) -> None:
     t0 = time.time()
     _run_step1(args.voice_dir, args.config)
     logger.info("=== Step 1 완료 ({:.0f}초) ===", time.time() - t0)
+    logger.info(
+        "[다음 단계]\n"
+        "  (선택) ASR 라벨 검수: python main.py serve → http://localhost:9880/review\n"
+        "  바로 진행: python main.py step2 --voice-dir {}",
+        args.voice_dir,
+    )
 
 
 def _cmd_step2(args: argparse.Namespace) -> None:
@@ -361,6 +367,10 @@ def _cmd_step2(args: argparse.Namespace) -> None:
     t0 = time.time()
     _run_step2(args.voice_dir, args.version)
     logger.info("=== Step 2 완료 ({:.0f}초) ===", time.time() - t0)
+    logger.info(
+        "[다음 단계] python main.py step3 --voice-dir {} --version {}",
+        args.voice_dir, args.version,
+    )
 
 
 def _cmd_step3(args: argparse.Namespace) -> None:
@@ -369,6 +379,10 @@ def _cmd_step3(args: argparse.Namespace) -> None:
     t0 = time.time()
     _run_step3(args.voice_dir, args.version, args.epochs, args.batch_size)
     logger.info("=== Step 3 완료 ({:.0f}초) ===", time.time() - t0)
+    logger.info(
+        "[다음 단계] python main.py step4 --voice-dir {} --version {} --output-text '합성할 텍스트'",
+        args.voice_dir, args.version,
+    )
 
 
 def _cmd_step4(args: argparse.Namespace) -> None:
@@ -380,6 +394,13 @@ def _cmd_step4(args: argparse.Namespace) -> None:
         args.ref_audio, args.ref_text, args.ref_lang,
     )
     logger.info("=== Step 4 완료 ({:.0f}초) ===", time.time() - t0)
+    logger.info(
+        "[완료] voice.yaml이 생성되었습니다.\n"
+        "  서버 실행: python main.py serve\n"
+        "  합성 테스트: curl -X POST http://localhost:9880/tts -H 'Content-Type: application/json' "
+        "-d '{{\"voice\": \"{}\", \"text\": \"테스트\", \"text_lang\": \"ko\"}}' --output test.wav",
+        os.path.basename(os.path.abspath(args.voice_dir)),
+    )
 
 
 # ---------------------------------------------------------------------------
