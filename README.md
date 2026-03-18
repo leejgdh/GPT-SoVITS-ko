@@ -157,32 +157,6 @@ emotions:
 
 ## 라이선스
 
-이 프로젝트는 **MIT License**로 배포됩니다.
+MIT License.
 
-원본 [RVC-Boss/GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)(MIT License, Copyright (c) 2024 RVC-Boss) 코드를 포함하고 있습니다.
-
-### 자체 코드 (MIT)
-
-`src/`, `scripts/`, `main.py`와 아래 `tools/` 내 파일:
-
-- `tools/voice-checker/` — 오디오 품질 분류 도구
-- `tools/utils/` — 공용 유틸 (오디오 로드, 모델 다운로드)
-- `tools/training/` — 학습 인프라
-- `tools/label-review.html` — ASR 라벨 검수 UI
-
-### 원본 GPT-SoVITS 유래 코드 (MIT, RVC-Boss)
-
-| 컴포넌트 | 경로 |
-|----------|------|
-| 모델 아키텍처 | `GPT_SoVITS/` |
-| 오디오 슬라이서 | `tools/audio/slicer.py` |
-| 오디오 유틸 | `tools/utils/audio.py`, `tools/audio/super_res.py` |
-| ASR 설정 | `tools/asr/` |
-| 보컬 분리 (UVR5) | `tools/uvr5/` |
-| BigVGAN (NVIDIA) | `GPT_SoVITS/BigVGAN/` (MIT + 하위 라이선스 — `incl_licenses/` 참조) |
-
-### 외부 프로젝트
-
-| 컴포넌트 | 라이선스 | 경로 |
-|----------|---------|------|
-| AP-BWE (Ye-Xin Lu) | MIT | `tools/AP_BWE_main/LICENSE` |
+[RVC-Boss/GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) (MIT, Copyright (c) 2024 RVC-Boss) 를 기반으로 하며, 원본 코드는 `GPT_SoVITS/`, `tools/audio/`, `tools/asr/`, `tools/uvr5/`에 포함되어 있습니다. BigVGAN(`GPT_SoVITS/BigVGAN/`)은 NVIDIA MIT + 하위 라이선스를 따릅니다(`incl_licenses/` 참조). AP-BWE(`tools/AP_BWE_main/`)는 MIT License입니다.
