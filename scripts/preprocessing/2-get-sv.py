@@ -107,10 +107,15 @@ def main() -> None:
     os.makedirs(wav32dir, exist_ok=True)
 
     if not os.path.exists(args.sv_path):
-        raise FileNotFoundError(
-            f"ERes2NetV2 모델을 찾을 수 없습니다: {args.sv_path}\n"
-            "GPT_SoVITS/pretrained_models/sv/ 에 pretrained_eres2netv2w24s4ep4.ckpt 를 배치해 주세요."
+        from tools.utils.download import ensure_file
+        logger.info("ERes2NetV2 모델 다운로드 중...")
+        ensure_file(
+            local_path=args.sv_path,
+            repo_id="RVC-Boss/GPT-SoVITS",
+            filename="GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt",
         )
+        if not os.path.exists(args.sv_path):
+            raise FileNotFoundError(f"ERes2NetV2 모델 다운로드 실패: {args.sv_path}")
 
     extractor = SpeakerEmbeddingExtractor(args.sv_path, device, is_half)
 
