@@ -34,6 +34,11 @@ GPT_SoVITS/text/engdict_cache.pickle
 !/data/models/
 /data/models/*
 !/data/models/.gitkeep
+!/data/voice-checker/
+/data/voice-checker/*
+!/data/voice-checker/models/
+/data/voice-checker/models/*
+!/data/voice-checker/models/best_model.pth
 logs/*
 !logs/.gitkeep
 output/*
