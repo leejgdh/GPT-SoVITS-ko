@@ -1,3 +1,7 @@
+# 로컬 설정 (conf.example.yaml을 복사하여 사용)
+conf.yaml
+tools/voice-checker/conf.yaml
+
 # 대용량 모델/데이터
 GPT_SoVITS/pretrained_models/
 GPT_SoVITS/text/G2PWModel/g2pW.onnx
