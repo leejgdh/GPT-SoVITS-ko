@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -86,6 +87,60 @@ def _setup_logger(
 
 
 # ---------------------------------------------------------------------------
+# 서버 관리
+# ---------------------------------------------------------------------------
+
+_server_thread: threading.Thread | None = None
+
+
+def _start_server_background(config_path: str = "conf.yaml") -> None:
+    """서버를 백그라운드 스레드로 시작한다. 이미 실행 중이면 무시."""
+    global _server_thread
+    if _server_thread is not None and _server_thread.is_alive():
+        return
+
+    import uvicorn
+
+    from src.config.config import Config, load_config
+
+    path = Path(config_path)
+    if path.exists():
+        config = load_config(path)
+        os.environ["TTS_SERVICE_CONFIG"] = str(config_path)
+    else:
+        config = Config()
+
+    host = config.service.host
+    port = config.service.port
+
+    def _run_server():
+        uvicorn.run(
+            "src.server.app:create_app",
+            factory=True,
+            host=host,
+            port=port,
+            log_level="warning",
+            access_log=False,
+        )
+
+    _server_thread = threading.Thread(target=_run_server, daemon=True)
+    _server_thread.start()
+    logger.info("서버 시작 (백그라운드): http://{}:{}", host, port)
+
+
+def _wait_for_server() -> None:
+    """서버가 실행 중이면 Ctrl+C까지 대기한다."""
+    if _server_thread is None or not _server_thread.is_alive():
+        return
+    logger.info("서버 실행 중 — Ctrl+C로 종료")
+    try:
+        while _server_thread.is_alive():
+            _server_thread.join(timeout=1)
+    except KeyboardInterrupt:
+        logger.info("종료 요청")
+
+
+# ---------------------------------------------------------------------------
 # serve 커맨드
 # ---------------------------------------------------------------------------
 
@@ -108,7 +163,7 @@ def _cmd_serve(args: argparse.Namespace) -> None:
     _setup_logger(
         "tts_service",
         level=log_level,
-        log_dir=Path(__file__).resolve().parent / "logs",
+        log_dir=_LOG_DIR,
     )
 
     host = args.host or config.service.host
@@ -355,7 +410,7 @@ def _cmd_step1(args: argparse.Namespace) -> None:
     logger.info("=== Step 1 완료 ({:.0f}초) ===", time.time() - t0)
     logger.info(
         "[다음 단계]\n"
-        "  (선택) ASR 라벨 검수: python main.py serve → http://localhost:9880/review\n"
+        "  (선택) ASR 라벨 검수: http://localhost:9880/review\n"
         "  바로 진행: python main.py step2 --voice-dir {}",
         args.voice_dir,
     )
@@ -393,13 +448,13 @@ def _cmd_step4(args: argparse.Namespace) -> None:
         args.voice_dir, args.version, args.output_text,
         args.ref_audio, args.ref_text, args.ref_lang,
     )
+    voice_name = os.path.basename(os.path.abspath(args.voice_dir))
     logger.info("=== Step 4 완료 ({:.0f}초) ===", time.time() - t0)
     logger.info(
         "[완료] voice.yaml이 생성되었습니다.\n"
-        "  서버 실행: python main.py serve\n"
         "  합성 테스트: curl -X POST http://localhost:9880/tts -H 'Content-Type: application/json' "
         "-d '{{\"voice\": \"{}\", \"text\": \"테스트\", \"text_lang\": \"ko\"}}' --output test.wav",
-        os.path.basename(os.path.abspath(args.voice_dir)),
+        voice_name,
     )
 
 
@@ -567,16 +622,28 @@ _CMD_MAP = {
 }
 
 
+_SERVER_COMMANDS = {"step1", "step2", "step3", "step4", "pipeline"}
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
     handler = _CMD_MAP.get(args.command)
-    if handler:
-        handler(args)
-    else:
+    if not handler:
         parser.print_help()
         sys.exit(1)
+
+    # step/pipeline 실행 시 서버를 백그라운드로 자동 시작
+    if args.command in _SERVER_COMMANDS:
+        config_path = getattr(args, "config", "conf.yaml")
+        _start_server_background(config_path)
+
+    handler(args)
+
+    # step/pipeline 완료 후 서버 유지 (Ctrl+C로 종료)
+    if args.command in _SERVER_COMMANDS:
+        _wait_for_server()
 
 
 if __name__ == "__main__":
