@@ -28,8 +28,8 @@ from loguru import logger
 from tqdm import tqdm
 
 from tools.asr.config import get_models
-from tools.dl_utils import download_whisper_model
-from tools.my_utils import load_audio, load_cudnn
+from tools.utils.download import download_whisper_model
+from tools.utils.audio import load_audio, load_cudnn
 
 _LANGUAGE_CODES = ["ko", "en", "ja", "auto"]
 _AUDIO_SR = 32000
@@ -89,21 +89,20 @@ def _parse_args() -> argparse.Namespace:
 
 def _load_voice_checker(model_path: str):
     """voice-checker CNN 모델을 로드한다. 실패 시 None 반환."""
-    voice_checker_root = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "tools", "voice-checker"),
-    )
-    sys.path.insert(0, voice_checker_root)
-    try:
-        from src.config.config import Config
-        from src.inference.predictor import VoiceQualityPredictor
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    vc_root = os.path.join(project_root, "tools", "voice-checker")
 
-        predictor = VoiceQualityPredictor(model_path, Config())
+    if vc_root not in sys.path:
+        sys.path.insert(0, vc_root)
+    try:
+        from src.config.config import VoiceCheckerConfig
+        from vc.predictor import VoiceQualityPredictor
+
+        predictor = VoiceQualityPredictor(model_path, VoiceCheckerConfig())
         return predictor
     except Exception as e:
         logger.warning("voice-checker 모델 로드 실패: {}", e)
         return None
-    finally:
-        sys.path.remove(voice_checker_root)
 
 
 def main() -> None:

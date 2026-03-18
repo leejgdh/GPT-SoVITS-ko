@@ -36,7 +36,7 @@ from process_ckpt import get_sovits_version_from_path_fast, load_sovits_new
 from TTS_infer_pack.TextPreprocessor import TextPreprocessor
 from TTS_infer_pack.TTS_config import DictToAttrRecursive
 
-from tools.my_utils import load_audio
+from tools.utils.audio import load_audio
 
 is_half = True
 device = "cuda" if torch.cuda.is_available() else "cpu"

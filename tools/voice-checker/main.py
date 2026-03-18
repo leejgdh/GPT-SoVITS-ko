@@ -32,8 +32,16 @@ _FILE_FMT = (
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
-_DATA_DIR = _PROJECT_ROOT / "data"
-_LABELS_FILE = _DATA_DIR / "labels.json"
+# voice-checker/ → tools/ → gpt-sovits/
+_GPT_SOVITS_ROOT = _PROJECT_ROOT.parent.parent
+
+# 루트 src/ import를 위해 GPT-SoVITS 루트를 sys.path에 추가
+if str(_GPT_SOVITS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_GPT_SOVITS_ROOT))
+_VOICES_DIR = _GPT_SOVITS_ROOT / "data" / "voice"
+_MODELS_DIR = _GPT_SOVITS_ROOT / "data" / "voice-checker" / "models"
+_LOG_DIR = _GPT_SOVITS_ROOT / "logs"
+_QUALITY_LABELS = "quality_labels.json"
 _AUDIO_EXTS = {".wav", ".flac", ".mp3", ".ogg", ".m4a"}
 
 
@@ -169,34 +177,12 @@ def _cmd_import(args: argparse.Namespace) -> None:
 
 
 def _cmd_serve(args: argparse.Namespace) -> None:
-    """라벨링 UI 서버를 실행한다."""
-    import uvicorn
-
-    from src.config.config import Config, load_config
-
-    config_path = Path(args.config)
-    config = load_config(config_path) if config_path.exists() else Config()
-
-    log_level = "DEBUG" if args.verbose else config.log_level
-    _setup_logger(
-        "voice_checker",
-        level=log_level,
-        log_dir=_PROJECT_ROOT / "logs",
-    )
-
-    host = args.host or config.service.host
-    port = args.port or config.service.port
-
-    os.environ["VOICE_CHECKER_CONFIG"] = str(config_path)
-    logger.info("Voice Checker 라벨링 서버 시작: {}:{}", host, port)
-
-    uvicorn.run(
-        "src.server.app:create_app",
-        factory=True,
-        host=host,
-        port=port,
-        log_level=log_level.lower(),
-        access_log=False,
+    """라벨링 UI는 메인 서버에 통합되었습니다."""
+    _setup_logger("voice_checker", level="INFO")
+    logger.warning(
+        "serve 커맨드는 메인 서버에 통합되었습니다.\n"
+        "  → 프로젝트 루트에서 'python main.py serve' 실행 후\n"
+        "  → http://localhost:9880/voice-checker/labeling 접속",
     )
 
 
@@ -205,21 +191,38 @@ def _cmd_serve(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _cmd_train(args: argparse.Namespace) -> None:
-    """labels.json 기반으로 CNN 모델을 학습한다."""
-    from src.config.config import Config, load_config
-    from src.training.trainer import run_training
+def _load_vc_config(config_path: Path):
+    """루트 conf.yaml에서 voice_checker 설정을 로드한다."""
+    from src.config.config import VoiceCheckerConfig, load_config as load_root_config
 
-    config_path = Path(args.config)
-    config = load_config(config_path) if config_path.exists() else Config()
+    if not config_path.exists():
+        return VoiceCheckerConfig()
+
+    root_config = load_root_config(config_path)
+    return root_config.voice_checker or VoiceCheckerConfig()
+
+
+def _cmd_train(args: argparse.Namespace) -> None:
+    """quality_labels.json 기반으로 CNN 모델을 학습한다."""
+    from vc.trainer import run_training
+
+    config = _load_vc_config(Path(args.config))
 
     _setup_logger(
         "voice_checker",
-        level="DEBUG" if args.verbose else config.log_level,
-        log_dir=_PROJECT_ROOT / "logs",
+        level="DEBUG" if args.verbose else "INFO",
+        log_dir=_LOG_DIR,
     )
 
-    run_training(config, _DATA_DIR, _LABELS_FILE, _PROJECT_ROOT / "models")
+    voice_dir = Path(args.voice_dir)
+    data_dir = voice_dir / "step1" / "03_vocal"
+    labels_file = voice_dir / _QUALITY_LABELS
+
+    if not data_dir.is_dir():
+        logger.error("오디오 디렉토리가 없습니다: {}", data_dir)
+        sys.exit(1)
+
+    run_training(config, data_dir, labels_file, _MODELS_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -229,18 +232,16 @@ def _cmd_train(args: argparse.Namespace) -> None:
 
 def _cmd_predict(args: argparse.Namespace) -> None:
     """학습된 모델로 오디오 품질을 예측한다."""
-    from src.config.config import Config, load_config
-    from src.inference.predictor import VoiceQualityPredictor
+    from vc.predictor import VoiceQualityPredictor
 
-    config_path = Path(args.config)
-    config = load_config(config_path) if config_path.exists() else Config()
+    config = _load_vc_config(Path(args.config))
 
     _setup_logger(
         "voice_checker",
-        level="DEBUG" if args.verbose else config.log_level,
+        level="DEBUG" if args.verbose else "INFO",
     )
 
-    model_path = args.model or str(_PROJECT_ROOT / config.inference.model_path)
+    model_path = args.model or str(_MODELS_DIR / config.inference.model_path)
     if not os.path.exists(model_path):
         logger.error("모델 파일을 찾을 수 없습니다: {}", model_path)
         sys.exit(1)
@@ -302,6 +303,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sp_train = sub.add_parser("train", help="CNN 모델 학습")
     sp_train.add_argument("-v", "--verbose", action="store_true")
     sp_train.add_argument("-c", "--config", default="conf.yaml")
+    sp_train.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더 (예: data/voice/lunabi)")
 
     # --- predict ---
     sp_predict = sub.add_parser("predict", help="오디오 품질 예측")

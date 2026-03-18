@@ -4,7 +4,8 @@ from __future__ import annotations
 import torch
 import torchaudio
 
-from src.config.config import AudioConfig, AugmentationConfig
+from src.config.config import VCAudioConfig as AudioConfig
+from src.config.config import VCAugmentationConfig as AugmentationConfig
 
 
 class MelSpectrogramTransform:

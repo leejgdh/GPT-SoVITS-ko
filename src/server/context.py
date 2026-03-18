@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -33,23 +34,30 @@ class ServiceContext:
 
         ctx = cls(config)
 
-        # TTS 파이프라인 초기화 (기본 설정)
-        ctx._tts_config = TTS_Config(config.tts)
-        ctx._tts_pipeline = TTS(ctx._tts_config)
-        logger.info("TTS 파이프라인 초기화 완료")
+        # TTS 파이프라인 초기화 (pretrained 모델 없으면 스킵)
+        try:
+            ctx._tts_config = TTS_Config(config.tts)
+            ctx._tts_pipeline = TTS(ctx._tts_config)
+            logger.info("TTS 파이프라인 초기화 완료")
+        except (FileNotFoundError, OSError) as e:
+            logger.warning("TTS 파이프라인 초기화 스킵 (모델 미설치): {}", e)
+            logger.warning("TTS 합성 비활성 — 라벨링/검수 기능만 사용 가능")
 
         # voice 스캔
         ctx._voices = scan_voices(config.voices_dir)
 
-        # 기본 voice 로드
-        if config.default_voice:
-            if config.default_voice in ctx._voices:
+        # 기본 voice 로드 (available 상태인 경우만)
+        if config.default_voice and ctx._tts_pipeline is not None:
+            profile = ctx._voices.get(config.default_voice)
+            if profile and profile.available:
                 ctx.switch_voice(config.default_voice)
+            elif profile and not profile.available:
+                logger.info("기본 voice '{}' 학습 미완료 (available: false)", config.default_voice)
             else:
-                logger.warning(
-                    "기본 voice '{}' 를 찾을 수 없습니다",
-                    config.default_voice,
-                )
+                logger.warning("기본 voice '{}' 를 찾을 수 없습니다", config.default_voice)
+
+        if config.voice_checker is not None:
+            logger.info("Voice Checker 활성화")
 
         return ctx
 

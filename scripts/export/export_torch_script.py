@@ -26,7 +26,7 @@ from process_ckpt import load_sovits_new
 from TTS_infer_pack.TextPreprocessor import TextPreprocessor
 from TTS_infer_pack.TTS_config import DictToAttrRecursive
 
-from tools.my_utils import load_audio
+from tools.utils.audio import load_audio
 
 bert_path = os.environ.get("bert_path", "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large")
 hubert_base_path = "GPT_SoVITS/pretrained_models/chinese-hubert-base"

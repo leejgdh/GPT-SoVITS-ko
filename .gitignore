@@ -1,3 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+
+# 로컬 설정 (conf.example.yaml을 복사하여 사용)
+conf.yaml
+
+# uv
+uv.lock
+
 # 대용량 모델/데이터
 GPT_SoVITS/pretrained_models/
 GPT_SoVITS/text/G2PWModel/g2pW.onnx
@@ -12,6 +22,23 @@ GPT_SoVITS/text/engdict_cache.pickle
 # 데이터/로그
 /data/*
 !/data/.gitkeep
+!/data/voice/
+/data/voice/*
+!/data/voice/.gitkeep
+!/data/voice/dahwi/
+/data/voice/dahwi/*
+!/data/voice/dahwi/.gitkeep
+!/data/voice/dahwi/raw_audio/
+/data/voice/dahwi/raw_audio/*
+!/data/voice/dahwi/raw_audio/.gitkeep
+!/data/models/
+/data/models/*
+!/data/models/.gitkeep
+!/data/voice-checker/
+/data/voice-checker/*
+!/data/voice-checker/models/
+/data/voice-checker/models/*
+!/data/voice-checker/models/best_model.pth
 logs/*
 !logs/.gitkeep
 output/*

@@ -21,12 +21,57 @@ class ServiceConfig:
 
 
 @dataclass
+class VCAudioConfig:
+    sample_rate: int = 44100
+    n_mels: int = 64
+    n_fft: int = 1024
+    hop_length: int = 512
+    target_length: int = 128
+
+
+@dataclass
+class VCTrainingConfig:
+    batch_size: int = 16
+    epochs: int = 50
+    learning_rate: float = 0.001
+    weight_decay: float = 0.0001
+    val_ratio: float = 0.2
+    early_stop_patience: int = 10
+    seed: int = 42
+
+
+@dataclass
+class VCAugmentationConfig:
+    enabled: bool = True
+    time_mask_param: int = 10
+    freq_mask_param: int = 5
+    noise_std: float = 0.005
+    minority_oversample: int = 5
+
+
+@dataclass
+class VCInferenceConfig:
+    model_path: str = "data/voice-checker/models/best_model.pth"
+    threshold: float = 0.5
+
+
+@dataclass
+class VoiceCheckerConfig:
+    """Voice Checker 설정. conf.yaml에 voice_checker 섹션이 있으면 활성화."""
+    audio: VCAudioConfig = field(default_factory=VCAudioConfig)
+    training: VCTrainingConfig = field(default_factory=VCTrainingConfig)
+    augmentation: VCAugmentationConfig = field(default_factory=VCAugmentationConfig)
+    inference: VCInferenceConfig = field(default_factory=VCInferenceConfig)
+
+
+@dataclass
 class Config:
     service: ServiceConfig = field(default_factory=ServiceConfig)
     tts: dict = field(default_factory=dict)
     voices_dir: str = "data/voice"
     default_voice: str | None = None
     log_level: str = "INFO"
+    voice_checker: VoiceCheckerConfig | None = None
 
 
 def _find_latest(directory: str, pattern: str) -> str | None:
@@ -67,6 +112,16 @@ def load_config(path: Path) -> Config:
     if "custom" in tts:
         _resolve_voice_dir(tts["custom"])
 
+    vc_data = data.get("voice_checker")
+    vc_config = None
+    if vc_data is not None:
+        vc_config = VoiceCheckerConfig(
+            audio=VCAudioConfig(**vc_data["audio"]) if "audio" in vc_data else VCAudioConfig(),
+            training=VCTrainingConfig(**vc_data["training"]) if "training" in vc_data else VCTrainingConfig(),
+            augmentation=VCAugmentationConfig(**vc_data["augmentation"]) if "augmentation" in vc_data else VCAugmentationConfig(),
+            inference=VCInferenceConfig(**vc_data["inference"]) if "inference" in vc_data else VCInferenceConfig(),
+        )
+
     return Config(
         service=ServiceConfig(
             host=svc.get("host", "0.0.0.0"),
@@ -76,6 +131,7 @@ def load_config(path: Path) -> Config:
         voices_dir=data.get("voices_dir", "data/voice"),
         default_voice=data.get("default_voice"),
         log_level=data.get("log_level", "INFO"),
+        voice_checker=vc_config,
     )
 
 

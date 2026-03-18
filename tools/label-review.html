@@ -6,17 +6,17 @@
 <title>ASR 라벨 검수</title>
 <style>
   :root {
-    --bg: #1a1a2e;
-    --surface: #16213e;
-    --border: #0f3460;
-    --text: #e0e0e0;
-    --text-dim: #8a8a9a;
-    --accent: #4a9eff;
-    --pending: #f0a500;
-    --approved: #2ecc71;
-    --rejected: #e74c3c;
-    --danger: #c0392b;
-    --hover: #1a2a4e;
+    --bg: #f5f5f5;
+    --surface: #ffffff;
+    --border: #d0d0d0;
+    --text: #333333;
+    --text-dim: #777777;
+    --accent: #2563eb;
+    --pending: #d97706;
+    --approved: #16a34a;
+    --rejected: #dc2626;
+    --danger: #b91c1c;
+    --hover: #e8e8e8;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -68,8 +68,8 @@
     font-weight: 600;
   }
 
-  .badge.pending  { background: var(--pending); color: #000; }
-  .badge.approved { background: var(--approved); color: #000; }
+  .badge.pending  { background: var(--pending); color: #fff; }
+  .badge.approved { background: var(--approved); color: #fff; }
   .badge.rejected { background: var(--rejected); color: #fff; }
 
   .toolbar-right {
@@ -150,12 +150,17 @@
   /* 컬럼 너비 */
   .col-idx   { width: 40px; }
   .col-play  { width: 50px; }
-  .col-wave  { width: 160px; }
+  .col-wave  { width: 260px; }
   .col-text  { /* flex */ }
   .col-lang  { width: 50px; }
-  .col-state { width: 200px; }
   .col-emo   { width: 160px; }
   .col-del   { width: 40px; }
+
+  .wave-state-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
 
   /* 파형 */
   .waveform {
@@ -415,7 +420,6 @@
           <th class="col-wave">파형</th>
           <th class="col-text">텍스트</th>
           <th class="col-lang">언어</th>
-          <th class="col-state">상태</th>
           <th class="col-emo">감정 매핑</th>
           <th class="col-del"></th>
         </tr>
@@ -570,9 +574,19 @@ function renderLabels() {
         </button>
       </td>
       <td>
-        <canvas class="waveform" data-wave-idx="${l.index}"
-                width="150" height="32"
-                onclick="togglePlay(${l.index})"></canvas>
+        <div class="wave-state-group">
+          <canvas class="waveform" data-wave-idx="${l.index}"
+                  width="150" height="32"
+                  onclick="togglePlay(${l.index})"></canvas>
+          <div class="state-btns">
+            <button class="state-btn ${l.state === 'pending' ? 'active-pending' : ''}"
+                    onclick="setState(${l.index},'pending')">P</button>
+            <button class="state-btn ${l.state === 'approved' ? 'active-approved' : ''}"
+                    onclick="setState(${l.index},'approved')">A</button>
+            <button class="state-btn ${l.state === 'rejected' ? 'active-rejected' : ''}"
+                    onclick="setState(${l.index},'rejected')">R</button>
+          </div>
+        </div>
       </td>
       <td>
         <input class="text-input" value="${escHtml(l.text)}"
@@ -582,16 +596,6 @@ function renderLabels() {
                oninput="this.classList.toggle('modified', this.value !== this.dataset.original)">
       </td>
       <td style="color:var(--text-dim)">${l.lang}</td>
-      <td>
-        <div class="state-btns">
-          <button class="state-btn ${l.state === 'pending' ? 'active-pending' : ''}"
-                  onclick="setState(${l.index},'pending')">P</button>
-          <button class="state-btn ${l.state === 'approved' ? 'active-approved' : ''}"
-                  onclick="setState(${l.index},'approved')">A</button>
-          <button class="state-btn ${l.state === 'rejected' ? 'active-rejected' : ''}"
-                  onclick="setState(${l.index},'rejected')">R</button>
-        </div>
-      </td>
       <td>
         <div class="emo-cell">
           <select class="emo-select" onchange="mapEmotion(${l.index}, this.value)">

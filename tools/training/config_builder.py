@@ -11,7 +11,7 @@ import os
 import yaml
 from loguru import logger
 
-from tools.dl_utils import ensure_file
+from tools.utils.download import ensure_file
 from tools.training.data_helpers import merge_partitioned_files
 
 _HF_REPO = "lj1995/GPT-SoVITS"
