@@ -65,8 +65,9 @@ def _save_labels(labels_file: Path, files: list[dict]) -> None:
 
 
 @page_router.get("/quality-check", response_class=HTMLResponse)
-async def quality_check_page():
+async def quality_check_page(request: Request):
     """음질 라벨링 UI를 서빙한다."""
+    _require_vc(request)
     with open(_LABELER_HTML, encoding="utf-8") as f:
         html = f.read()
     html = html.replace('value="http://localhost:9880"', 'value=""')
