@@ -111,22 +111,6 @@ def _clean_step_dir(voice_dir: str, step: str, version: str, label: str) -> None
         shutil.rmtree(step_dir)
 
 
-def _load_voice_checker_model(config_path: str = "conf.yaml") -> str | None:
-    from src.config.config import Config, load_config
-
-    path = Path(config_path)
-    if not path.exists():
-        return None
-    config = load_config(path)
-    if config.voice_checker is None:
-        return None
-    model_path = config.voice_checker.inference.model_path
-    if Path(model_path).exists():
-        return model_path
-    logger.warning("voice_checker 모델 경로가 존재하지 않습니다: {}", model_path)
-    return None
-
-
 # ---------------------------------------------------------------------------
 # step 실행 함수
 # ---------------------------------------------------------------------------
@@ -166,31 +150,33 @@ def run_uvr5(voice_dir: str) -> None:
           "--voice-dir", voice_dir], "uvr5")
 
 
-def run_asr(voice_dir: str, config_path: str = "conf.yaml") -> None:
-    cmd = [sys.executable, "scripts/data_preparation/asr_whisper.py",
-           "--voice-dir", voice_dir]
-    vc_model = _load_voice_checker_model(config_path)
-    if vc_model:
-        cmd += ["--voice-checker-model", vc_model]
-        logger.info("Voice Checker 활성화: {}", vc_model)
-    _run(cmd, "asr")
+def run_asr(voice_dir: str) -> None:
+    _run([sys.executable, "scripts/data_preparation/asr_whisper.py",
+          "--voice-dir", voice_dir], "asr")
 
 
 def run_classify(voice_dir: str, config_path: str = "conf.yaml") -> None:
     """vocal.list의 pending 상태를 Voice Checker CNN으로 재분류한다."""
-    vc_model = _load_voice_checker_model(config_path)
-    if vc_model is None:
-        logger.error("Voice Checker 모델이 없습니다. conf.yaml의 voice_checker 설정을 확인하세요.")
-        sys.exit(1)
+    from src.config.config import VoiceCheckerConfig, load_config
+
+    path = Path(config_path)
+    config = load_config(path) if path.exists() else None
+    if config is None or config.voice_checker is None:
+        logger.info("voice_checker 미설정 — classify 건너뜀")
+        return
+
+    model_path = config.voice_checker.inference.model_path
+    if not Path(model_path).exists():
+        logger.warning("Voice Checker 모델 없음: {} — classify 건너뜀", model_path)
+        return
 
     # voice-checker predictor 로드
     vc_root = os.path.join(_PROJECT_ROOT, "tools", "voice-checker")
     if vc_root not in sys.path:
         sys.path.insert(0, vc_root)
-    from src.config.config import VoiceCheckerConfig
     from vc.predictor import VoiceQualityPredictor
 
-    predictor = VoiceQualityPredictor(vc_model, VoiceCheckerConfig())
+    predictor = VoiceQualityPredictor(model_path, config.voice_checker)
 
     # vocal.list 읽기
     asr_dir = os.path.join(voice_dir, "step1", "04_asr")
@@ -289,7 +275,8 @@ def run_step1(voice_dir: str, config_path: str = "conf.yaml") -> None:
     run_denoise(voice_dir)
     run_slice(voice_dir)
     run_uvr5(voice_dir)
-    run_asr(voice_dir, config_path)
+    run_asr(voice_dir)
+    run_classify(voice_dir, config_path)
 
 
 def run_step2(voice_dir: str, version: str) -> None:
@@ -367,7 +354,7 @@ def cmd_uvr5(args: argparse.Namespace) -> None:
 
 def cmd_asr(args: argparse.Namespace) -> None:
     _log_step("asr", args)
-    run_asr(args.voice_dir, args.config)
+    run_asr(args.voice_dir)
 
 
 def cmd_classify(args: argparse.Namespace) -> None:
