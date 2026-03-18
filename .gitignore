@@ -16,6 +16,18 @@ GPT_SoVITS/text/engdict_cache.pickle
 # 데이터/로그
 /data/*
 !/data/.gitkeep
+!/data/voice/
+/data/voice/*
+!/data/voice/.gitkeep
+!/data/voice/dahwi/
+/data/voice/dahwi/*
+!/data/voice/dahwi/.gitkeep
+!/data/voice/dahwi/raw_audio/
+/data/voice/dahwi/raw_audio/*
+!/data/voice/dahwi/raw_audio/.gitkeep
+!/data/models/
+/data/models/*
+!/data/models/.gitkeep
 logs/*
 !logs/.gitkeep
 output/*
