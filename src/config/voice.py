@@ -1,7 +1,7 @@
 """Voice 프로필 관리.
 
 voice.yaml 스키마:
-  name: lunabi
+  name: dahwi
   version: v2Pro
   ref_lang: ko
   gpt_weights: step3/v2Pro/02_gpt_weights/model.ckpt
