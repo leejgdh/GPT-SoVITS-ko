@@ -230,7 +230,27 @@ def _clean_step_dir(voice_dir: str, step: str, version: str, label: str) -> None
         shutil.rmtree(step_dir)
 
 
-def _run_step1(voice_dir: str) -> None:
+def _load_voice_checker_model(config_path: str = "conf.yaml") -> str | None:
+    """conf.yaml에서 voice_checker 설정이 있으면 모델 경로를 반환한다."""
+    path = Path(config_path)
+    if not path.exists():
+        return None
+    import yaml
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    vc = data.get("voice_checker")
+    if vc is None:
+        return None
+    model_path = vc.get("inference", {}).get(
+        "model_path", "tools/voice-checker/models/best_model.pth",
+    )
+    if Path(model_path).exists():
+        return model_path
+    logger.warning("voice_checker 모델 경로가 존재하지 않습니다: {}", model_path)
+    return None
+
+
+def _run_step1(voice_dir: str, config_path: str = "conf.yaml") -> None:
     """Step 1: 데이터 준비 (denoise → slice → UVR5 → ASR)."""
     py = sys.executable
     _run([py, "scripts/data_preparation/denoise.py", "--voice-dir", voice_dir],
@@ -239,8 +259,13 @@ def _run_step1(voice_dir: str) -> None:
          "Step1-2 slice_audio")
     _run([py, "scripts/data_preparation/uvr5_separate.py", "--voice-dir", voice_dir],
          "Step1-3 uvr5_separate")
-    _run([py, "scripts/data_preparation/asr_whisper.py", "--voice-dir", voice_dir],
-         "Step1-4 asr_whisper")
+
+    asr_cmd = [py, "scripts/data_preparation/asr_whisper.py", "--voice-dir", voice_dir]
+    vc_model = _load_voice_checker_model(config_path)
+    if vc_model:
+        asr_cmd += ["--voice-checker-model", vc_model]
+        logger.info("Voice Checker 활성화: {}", vc_model)
+    _run(asr_cmd, "Step1-4 asr_whisper")
 
 
 def _run_step2(voice_dir: str, version: str) -> None:
@@ -326,7 +351,7 @@ def _cmd_step1(args: argparse.Namespace) -> None:
     _setup_logger("step1", level="DEBUG" if args.verbose else "INFO")
     logger.info("=== Step 1 시작: {} ===", args.voice_dir)
     t0 = time.time()
-    _run_step1(args.voice_dir)
+    _run_step1(args.voice_dir, args.config)
     logger.info("=== Step 1 완료 ({:.0f}초) ===", time.time() - t0)
 
 
@@ -374,7 +399,7 @@ def _cmd_pipeline(args: argparse.Namespace) -> None:
     logger.info("=== 파이프라인 시작: {} (version={}) ===", voice_dir, version)
 
     if "step1" not in skip:
-        _run_step1(voice_dir)
+        _run_step1(voice_dir, args.config)
     if "step2" not in skip:
         _run_step2(voice_dir, version)
     if "step3" not in skip:
@@ -429,6 +454,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Debug logging",
     )
     sp_pipe.add_argument(
+        "-c", "--config", default="conf.yaml",
+        help="설정 파일 경로",
+    )
+    sp_pipe.add_argument(
         "--voice-dir", required=True,
         help="캐릭터 음성 폴더 (예: data/voice/lunabi)",
     )
@@ -471,6 +500,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- step1 ---
     sp_s1 = sub.add_parser("step1", help="데이터 준비 (denoise → slice → UVR5 → ASR)")
     sp_s1.add_argument("-v", "--verbose", action="store_true")
+    sp_s1.add_argument("-c", "--config", default="conf.yaml", help="설정 파일 경로")
     sp_s1.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")
 
     # --- step2 ---

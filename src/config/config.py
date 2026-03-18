@@ -21,12 +21,38 @@ class ServiceConfig:
 
 
 @dataclass
+class VoiceCheckerConfig:
+    """Voice Checker 설정. conf.yaml에 voice_checker 섹션이 있으면 활성화."""
+    audio: dict = field(default_factory=lambda: {
+        "sample_rate": 44100, "n_mels": 64, "n_fft": 1024,
+        "hop_length": 512, "target_length": 128,
+    })
+    training: dict = field(default_factory=lambda: {
+        "batch_size": 16, "epochs": 50, "learning_rate": 0.001,
+        "weight_decay": 0.0001, "val_ratio": 0.2,
+        "early_stop_patience": 10, "seed": 42,
+    })
+    augmentation: dict = field(default_factory=lambda: {
+        "enabled": True, "time_mask_param": 10, "freq_mask_param": 5,
+        "noise_std": 0.005, "minority_oversample": 5,
+    })
+    inference: dict = field(default_factory=lambda: {
+        "model_path": "tools/voice-checker/models/best_model.pth",
+        "threshold": 0.5,
+    })
+    service: dict = field(default_factory=lambda: {
+        "host": "0.0.0.0", "port": 9890,
+    })
+
+
+@dataclass
 class Config:
     service: ServiceConfig = field(default_factory=ServiceConfig)
     tts: dict = field(default_factory=dict)
     voices_dir: str = "data/voice"
     default_voice: str | None = None
     log_level: str = "INFO"
+    voice_checker: VoiceCheckerConfig | None = None
 
 
 def _find_latest(directory: str, pattern: str) -> str | None:
@@ -67,6 +93,18 @@ def load_config(path: Path) -> Config:
     if "custom" in tts:
         _resolve_voice_dir(tts["custom"])
 
+    vc_data = data.get("voice_checker")
+    vc_config = None
+    if vc_data is not None:
+        defaults = VoiceCheckerConfig()
+        vc_config = VoiceCheckerConfig(
+            audio=vc_data.get("audio", defaults.audio),
+            training=vc_data.get("training", defaults.training),
+            augmentation=vc_data.get("augmentation", defaults.augmentation),
+            inference=vc_data.get("inference", defaults.inference),
+            service=vc_data.get("service", defaults.service),
+        )
+
     return Config(
         service=ServiceConfig(
             host=svc.get("host", "0.0.0.0"),
@@ -76,6 +114,7 @@ def load_config(path: Path) -> Config:
         voices_dir=data.get("voices_dir", "data/voice"),
         default_voice=data.get("default_voice"),
         log_level=data.get("log_level", "INFO"),
+        voice_checker=vc_config,
     )
 
 
