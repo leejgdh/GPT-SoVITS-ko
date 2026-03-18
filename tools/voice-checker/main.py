@@ -183,13 +183,43 @@ def _cmd_serve(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _load_vc_config(config_path: Path):
+    """루트 conf.yaml의 voice_checker 섹션에서 Config를 로드한다."""
+    from src.config.config import Config, load_config
+
+    if not config_path.exists():
+        return Config()
+
+    # 루트 conf.yaml에서 voice_checker 섹션 추출
+    import yaml
+    with open(config_path, encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+
+    vc = raw.get("voice_checker", {})
+    return load_config_from_dict(vc)
+
+
+def load_config_from_dict(raw: dict):
+    """dict에서 voice-checker Config를 생성한다."""
+    from src.config.config import (
+        AudioConfig, AugmentationConfig, Config,
+        InferenceConfig, ServiceConfig, TrainingConfig,
+    )
+    return Config(
+        audio=AudioConfig(**raw["audio"]) if "audio" in raw else AudioConfig(),
+        training=TrainingConfig(**raw["training"]) if "training" in raw else TrainingConfig(),
+        augmentation=AugmentationConfig(**raw["augmentation"]) if "augmentation" in raw else AugmentationConfig(),
+        inference=InferenceConfig(**raw["inference"]) if "inference" in raw else InferenceConfig(),
+        service=ServiceConfig(**raw["service"]) if "service" in raw else ServiceConfig(),
+        log_level=raw.get("log_level", "INFO"),
+    )
+
+
 def _cmd_train(args: argparse.Namespace) -> None:
     """labels.json 기반으로 CNN 모델을 학습한다."""
-    from src.config.config import Config, load_config
     from src.training.trainer import run_training
 
-    config_path = Path(args.config)
-    config = load_config(config_path) if config_path.exists() else Config()
+    config = _load_vc_config(Path(args.config))
 
     _setup_logger(
         "voice_checker",
@@ -207,11 +237,9 @@ def _cmd_train(args: argparse.Namespace) -> None:
 
 def _cmd_predict(args: argparse.Namespace) -> None:
     """학습된 모델로 오디오 품질을 예측한다."""
-    from src.config.config import Config, load_config
     from src.inference.predictor import VoiceQualityPredictor
 
-    config_path = Path(args.config)
-    config = load_config(config_path) if config_path.exists() else Config()
+    config = _load_vc_config(Path(args.config))
 
     _setup_logger(
         "voice_checker",
