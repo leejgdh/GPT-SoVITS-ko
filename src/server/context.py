@@ -48,15 +48,15 @@ class ServiceContext:
         # voice 스캔
         ctx._voices = scan_voices(config.voices_dir)
 
-        # 기본 voice 로드
-        if config.default_voice:
-            if config.default_voice in ctx._voices:
+        # 기본 voice 로드 (available 상태인 경우만)
+        if config.default_voice and ctx._tts_pipeline is not None:
+            profile = ctx._voices.get(config.default_voice)
+            if profile and profile.available:
                 ctx.switch_voice(config.default_voice)
+            elif profile and not profile.available:
+                logger.info("기본 voice '{}' 학습 미완료 (available: false)", config.default_voice)
             else:
-                logger.warning(
-                    "기본 voice '{}' 를 찾을 수 없습니다",
-                    config.default_voice,
-                )
+                logger.warning("기본 voice '{}' 를 찾을 수 없습니다", config.default_voice)
 
         # voice_checker 설정이 있으면 데이터 경로 설정
         if config.voice_checker is not None:

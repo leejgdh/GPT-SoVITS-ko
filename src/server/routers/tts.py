@@ -268,6 +268,11 @@ async def tts_post(request: Request, body: TTSRequest):
             status_code=404,
             content={"message": f"voice '{body.voice}' not found"},
         )
+    if not profile.available:
+        return JSONResponse(
+            status_code=503,
+            content={"message": f"voice '{body.voice}'는 아직 학습이 완료되지 않았습니다 (available: false)"},
+        )
 
     # voice.yaml 기본값 + 요청 오버라이드
     emo_ref = profile.get_emotion(body.emotion)

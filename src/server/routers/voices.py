@@ -17,7 +17,7 @@ async def list_voices(request: Request):
     """등록된 voice 목록을 반환한다."""
     ctx = _get_context(request)
     voices = [
-        {"name": p.name, "version": p.version, "ref_lang": p.ref_lang}
+        {"name": p.name, "version": p.version, "ref_lang": p.ref_lang, "available": p.available}
         for p in ctx.voices.values()
     ]
     return JSONResponse(content={

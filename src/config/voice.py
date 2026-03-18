@@ -38,10 +38,11 @@ class VoiceProfile:
     """캐릭터 음성 프로필."""
 
     name: str
-    version: str
-    ref_lang: str
-    gpt_weights: str
-    sovits_weights: str
+    version: str = ""
+    ref_lang: str = "ko"
+    gpt_weights: str = ""
+    sovits_weights: str = ""
+    available: bool = False
     emotions: dict[str, EmotionRef] = field(default_factory=dict)
 
     def get_emotion(self, emotion: str | None = None) -> EmotionRef:
@@ -88,11 +89,11 @@ def load_voice_profile(voice_dir: str) -> VoiceProfile | None:
         logger.warning("voice.yaml이 비어 있습니다: {}", yaml_path)
         return None
 
-    required = ("name", "version", "ref_lang", "gpt_weights", "sovits_weights")
-    missing = [k for k in required if k not in data]
-    if missing:
-        logger.warning("voice.yaml에 필수 키 누락: {} ({})", missing, yaml_path)
+    if "name" not in data:
+        logger.warning("voice.yaml에 name 키가 없습니다: {}", yaml_path)
         return None
+
+    available = data.get("available", False)
 
     # emotions 파싱 (하위 호환: 기존 ref_audio/ref_text → emotions.default)
     emotions: dict[str, EmotionRef] = {}
@@ -109,16 +110,13 @@ def load_voice_profile(voice_dir: str) -> VoiceProfile | None:
             ref_text=data.get("ref_text", ""),
         )
 
-    if not emotions:
-        logger.warning("voice.yaml에 emotions 또는 ref_audio가 없습니다: {}", yaml_path)
-        return None
-
     return VoiceProfile(
         name=data["name"],
-        version=data["version"],
-        ref_lang=data["ref_lang"],
-        gpt_weights=os.path.join(voice_dir, data["gpt_weights"]),
-        sovits_weights=os.path.join(voice_dir, data["sovits_weights"]),
+        version=data.get("version", ""),
+        ref_lang=data.get("ref_lang", "ko"),
+        gpt_weights=os.path.join(voice_dir, data["gpt_weights"]) if data.get("gpt_weights") else "",
+        sovits_weights=os.path.join(voice_dir, data["sovits_weights"]) if data.get("sovits_weights") else "",
+        available=available,
         emotions=emotions,
     )
 
@@ -182,6 +180,7 @@ def save_voice_yaml(
         "ref_lang": ref_lang,
         "gpt_weights": os.path.relpath(gpt_weights, voice_dir),
         "sovits_weights": os.path.relpath(sovits_weights, voice_dir),
+        "available": True,
         "emotions": emotions,
     }
     with open(yaml_path, "w", encoding="utf-8") as f:

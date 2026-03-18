@@ -132,7 +132,22 @@ def _load_voice_checker_model(config_path: str = "conf.yaml") -> str | None:
 # ---------------------------------------------------------------------------
 
 
+def _ensure_voice_yaml(voice_dir: str) -> None:
+    """voice.yaml이 없으면 초기 파일을 생성한다 (available: false)."""
+    yaml_path = os.path.join(voice_dir, "voice.yaml")
+    if os.path.exists(yaml_path):
+        return
+    import yaml
+    name = os.path.basename(os.path.abspath(voice_dir))
+    data = {"name": name, "available": False}
+    os.makedirs(voice_dir, exist_ok=True)
+    with open(yaml_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+    logger.info("voice.yaml 초기 생성: {} (available: false)", yaml_path)
+
+
 def run_step1(voice_dir: str, config_path: str = "conf.yaml") -> None:
+    _ensure_voice_yaml(voice_dir)
     py = sys.executable
     _run([py, "scripts/data_preparation/denoise.py", "--voice-dir", voice_dir],
          "Step1-1 denoise")
