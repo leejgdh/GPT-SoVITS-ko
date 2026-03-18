@@ -13,25 +13,22 @@ voices_dir: data/voice
 default_voice: dahwi
 
 # ---------------------------------------------------------------------------
-# Voice Checker (optional)
-# 이 섹션의 주석을 해제하면 step1 ASR에서 CNN 품질 분류를 자동 적용합니다.
-# 주석 상태 → Voice Checker 비활성화 (기본)
+# Voice Checker
+# step1 ASR에서 CNN 품질 분류를 자동 적용합니다.
+# 비활성화하려면 voice_checker 섹션 전체를 주석 처리하세요.
 # ---------------------------------------------------------------------------
-# voice_checker:
-#   inference:
-#     model_path: "data/voice-checker/models/best_model.pth"
-#     threshold: 0.5
-#   training:
-#     batch_size: 16
-#     epochs: 50
-#     learning_rate: 0.001
-#     early_stop_patience: 10
-#   audio:
-#     sample_rate: 44100
-#     n_mels: 64
-#     n_fft: 1024
-#     hop_length: 512
-#     target_length: 128
-#   service:
-#     host: "0.0.0.0"
-#     port: 9890
+voice_checker:
+  inference:
+    model_path: "data/voice-checker/models/best_model.pth"
+    threshold: 0.5
+  training:
+    batch_size: 16
+    epochs: 50
+    learning_rate: 0.001
+    early_stop_patience: 10
+  audio:
+    sample_rate: 44100
+    n_mels: 64
+    n_fft: 1024
+    hop_length: 512
+    target_length: 128

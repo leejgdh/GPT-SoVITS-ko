@@ -75,34 +75,12 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--min-duration", type=float, default=0.3, help="최소 오디오 길이 초 — 미달 시 rejected (기본: 0.3)")
     parser.add_argument("--min-rms", type=float, default=0.01, help="최소 RMS — 미달 시 무음으로 rejected (기본: 0.01)")
-    parser.add_argument(
-        "--voice-checker-model", default=None,
-        help="voice-checker CNN 모델 경로 — 지정 시 품질 분류 추론 적용",
-    )
     args = parser.parse_args()
     if args.input_folder is None:
         args.input_folder = os.path.join(args.voice_dir, "step1", "03_vocal")
     if args.output_folder is None:
         args.output_folder = os.path.join(args.voice_dir, "step1", "04_asr")
     return args
-
-
-def _load_voice_checker(model_path: str):
-    """voice-checker CNN 모델을 로드한다. 실패 시 None 반환."""
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    vc_root = os.path.join(project_root, "tools", "voice-checker")
-
-    if vc_root not in sys.path:
-        sys.path.insert(0, vc_root)
-    try:
-        from src.config.config import VoiceCheckerConfig
-        from vc.predictor import VoiceQualityPredictor
-
-        predictor = VoiceQualityPredictor(model_path, VoiceCheckerConfig())
-        return predictor
-    except Exception as e:
-        logger.warning("voice-checker 모델 로드 실패: {}", e)
-        return None
 
 
 def main() -> None:
@@ -120,11 +98,6 @@ def main() -> None:
     logger.info("Faster Whisper 모델 로딩: {}", model_path)
     model = WhisperModel(model_path, device=device, compute_type=args.precision)
 
-    # voice-checker CNN 모델 (선택적)
-    voice_checker = None
-    if args.voice_checker_model:
-        voice_checker = _load_voice_checker(args.voice_checker_model)
-
     input_file_names = sorted(os.listdir(args.input_folder))
     output = []
     output_file_name = os.path.basename(args.input_folder)
@@ -134,23 +107,13 @@ def main() -> None:
         try:
             file_path = os.path.join(args.input_folder, file_name)
 
-            # 1단계: rule-based 품질 검증 (빠른 필터링)
+            # rule-based 품질 검증 (빠른 필터링)
             quality_issue = _check_audio_quality(file_path, args.min_duration, args.min_rms)
             if quality_issue:
                 logger.warning("{} -> rejected ({})", file_name, quality_issue)
-                output.append(f"{file_path}|{output_file_name}||{quality_issue}|rejected")
+                output.append(f"{file_path}|{output_file_name}|||rejected")
                 rejected_count += 1
                 continue
-
-            # 2단계: CNN 품질 분류 (모델 지정 시)
-            if voice_checker is not None:
-                is_good, confidence = voice_checker.predict(file_path)
-                if not is_good:
-                    reason = f"CNN 품질 불량 (confidence={confidence:.3f})"
-                    logger.warning("{} -> rejected ({})", file_name, reason)
-                    output.append(f"{file_path}|{output_file_name}||{reason}|rejected")
-                    rejected_count += 1
-                    continue
 
             segments, info = model.transcribe(
                 audio=file_path,
@@ -164,7 +127,7 @@ def main() -> None:
                 text += segment.text
 
             if text.strip():
-                state = "approved" if voice_checker is not None else "pending"
+                state = "pending"
             else:
                 state = "rejected"
                 rejected_count += 1
