@@ -371,7 +371,7 @@ async function init() {
 // ── 파일 로드 ──
 
 async function loadFiles() {
-  const data = await api('GET', '/quality/files');
+  const data = await api('GET', '/voice-checker/files');
   files = data.files || [];
   updateCounts(data.counts || {});
   renderFiles();
@@ -487,7 +487,7 @@ async function loadWaveform(name, canvas) {
   try {
     let buf = waveCache.get(name);
     if (!buf) {
-      const res = await fetch(`${BASE}/quality/files/${encodeURIComponent(name)}/audio`);
+      const res = await fetch(`${BASE}/voice-checker/files/${encodeURIComponent(name)}/audio`);
       const arrayBuf = await res.arrayBuffer();
       buf = await audioCtx.decodeAudioData(arrayBuf);
       waveCache.set(name, buf);
@@ -543,7 +543,7 @@ function togglePlay(name) {
     return;
   }
   playingName = name;
-  audio.src = `${BASE}/quality/files/${encodeURIComponent(name)}/audio`;
+  audio.src = `${BASE}/voice-checker/files/${encodeURIComponent(name)}/audio`;
   audio.play().catch(() => toast('재생 실패', 'error'));
   renderFiles();
 }
@@ -559,7 +559,7 @@ async function setLabel(name, label) {
   const file = files.find(f => f.name === name);
   if (file && file.label === label) return;
   try {
-    await api('PATCH', `/quality/files/${encodeURIComponent(name)}/label`, { label });
+    await api('PATCH', `/voice-checker/files/${encodeURIComponent(name)}/label`, { label });
     if (file) file.label = label;
     updateCountsFromFiles();
     renderFiles();

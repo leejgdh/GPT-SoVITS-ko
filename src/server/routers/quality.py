@@ -1,4 +1,4 @@
-"""음질 라벨링 API — Voice Checker CNN 학습용 good/bad 분류."""
+"""Voice Checker API — CNN 모델 학습용 오디오 라벨링 (good/bad)."""
 from __future__ import annotations
 
 import json
@@ -16,8 +16,8 @@ from src.server.context import ServiceContext
 # 라우터 정의
 # ---------------------------------------------------------------------------
 
-api_router = APIRouter(prefix="/quality", tags=["quality"])
-page_router = APIRouter(tags=["quality"])
+api_router = APIRouter(prefix="/voice-checker", tags=["voice-checker"])
+page_router = APIRouter(tags=["voice-checker"])
 
 _LABELER_HTML = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -64,9 +64,9 @@ def _save_labels(labels_file: Path, files: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 
-@page_router.get("/quality-check", response_class=HTMLResponse)
-async def quality_check_page(request: Request):
-    """음질 라벨링 UI를 서빙한다."""
+@page_router.get("/voice-checker/labeling", response_class=HTMLResponse)
+async def voice_checker_labeling_page(request: Request):
+    """Voice Checker CNN 학습용 라벨링 UI를 서빙한다."""
     _require_vc(request)
     with open(_LABELER_HTML, encoding="utf-8") as f:
         html = f.read()

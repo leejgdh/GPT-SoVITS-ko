@@ -174,7 +174,7 @@ def _cmd_serve(args: argparse.Namespace) -> None:
     logger.warning(
         "serve 커맨드는 메인 서버에 통합되었습니다.\n"
         "  → 프로젝트 루트에서 'python main.py serve' 실행 후\n"
-        "  → http://localhost:9880/quality-check 접속",
+        "  → http://localhost:9880/voice-checker/labeling 접속",
     )
 
 
