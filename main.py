@@ -39,10 +39,14 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    if not args.command:
+        args.command = "serve"
+        # serve 기본 인자 설정
+        for attr, default in [("verbose", False), ("config", "conf.yaml"), ("host", None), ("port", None)]:
+            if not hasattr(args, attr):
+                setattr(args, attr, default)
+
     handler = _CMD_MAP.get(args.command)
-    if not handler:
-        parser.print_help()
-        sys.exit(1)
 
     if args.command in _SERVER_COMMANDS:
         config_path = getattr(args, "config", "conf.yaml")
