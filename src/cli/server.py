@@ -36,14 +36,18 @@ def start_server_background(config_path: str = "conf.yaml") -> None:
     port = config.service.port
 
     def _run_server():
-        uvicorn.run(
-            "src.server.app:create_app",
-            factory=True,
-            host=host,
-            port=port,
-            log_level="warning",
-            access_log=False,
-        )
+        try:
+            uvicorn.run(
+                "src.server.app:create_app",
+                factory=True,
+                host=host,
+                port=port,
+                log_level="warning",
+                access_log=False,
+            )
+        except Exception as e:
+            logger.warning("서버 시작 실패 (pretrained 모델 미설치 등): {}", e)
+            logger.warning("파이프라인은 계속 진행됩니다. 서버는 모델 준비 후 'python main.py serve'로 실행하세요.")
 
     _server_thread = threading.Thread(target=_run_server, daemon=True)
     _server_thread.start()
