@@ -114,6 +114,8 @@ def _start_server_background(config_path: str = "conf.yaml") -> None:
     port = config.service.port
 
     def _run_server():
+        from _setup_paths import setup_gpt_sovits_paths
+        setup_gpt_sovits_paths()
         uvicorn.run(
             "src.server.app:create_app",
             factory=True,
