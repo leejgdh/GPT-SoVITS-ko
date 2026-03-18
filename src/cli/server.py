@@ -35,17 +35,6 @@ def start_server_background(config_path: str = "conf.yaml") -> None:
     host = config.service.host
     port = config.service.port
 
-    # pretrained 모델 존재 여부 체크
-    from src.config.config import pretrained_gpt_name
-    project_root = Path(__file__).resolve().parents[2]
-    sample_model = project_root / pretrained_gpt_name.get("v2Pro", "")
-    if not sample_model.exists():
-        logger.info(
-            "pretrained 모델 미설치 — 서버를 시작하지 않습니다.\n"
-            "  파이프라인 완료 후 'python main.py serve'로 실행하세요.",
-        )
-        return
-
     def _run_server():
         uvicorn.run(
             "src.server.app:create_app",

@@ -36,10 +36,14 @@ class ServiceContext:
 
         ctx = cls(config)
 
-        # TTS 파이프라인 초기화 (기본 설정)
-        ctx._tts_config = TTS_Config(config.tts)
-        ctx._tts_pipeline = TTS(ctx._tts_config)
-        logger.info("TTS 파이프라인 초기화 완료")
+        # TTS 파이프라인 초기화 (pretrained 모델 없으면 스킵)
+        try:
+            ctx._tts_config = TTS_Config(config.tts)
+            ctx._tts_pipeline = TTS(ctx._tts_config)
+            logger.info("TTS 파이프라인 초기화 완료")
+        except (FileNotFoundError, OSError) as e:
+            logger.warning("TTS 파이프라인 초기화 스킵 (모델 미설치): {}", e)
+            logger.warning("TTS 합성 비활성 — 라벨링/검수 기능만 사용 가능")
 
         # voice 스캔
         ctx._voices = scan_voices(config.voices_dir)
