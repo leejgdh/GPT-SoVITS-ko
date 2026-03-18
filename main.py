@@ -344,8 +344,11 @@ def _run_step4(
 # ---------------------------------------------------------------------------
 
 
+_LOG_DIR = Path(__file__).resolve().parent / "logs"
+
+
 def _cmd_step1(args: argparse.Namespace) -> None:
-    _setup_logger("step1", level="DEBUG" if args.verbose else "INFO")
+    _setup_logger("step1", level="DEBUG" if args.verbose else "INFO", log_dir=_LOG_DIR)
     logger.info("=== Step 1 시작: {} ===", args.voice_dir)
     t0 = time.time()
     _run_step1(args.voice_dir, args.config)
@@ -359,7 +362,7 @@ def _cmd_step1(args: argparse.Namespace) -> None:
 
 
 def _cmd_step2(args: argparse.Namespace) -> None:
-    _setup_logger("step2", level="DEBUG" if args.verbose else "INFO")
+    _setup_logger("step2", level="DEBUG" if args.verbose else "INFO", log_dir=_LOG_DIR)
     logger.info("=== Step 2 시작: {} (version={}) ===", args.voice_dir, args.version)
     t0 = time.time()
     _run_step2(args.voice_dir, args.version)
@@ -371,7 +374,7 @@ def _cmd_step2(args: argparse.Namespace) -> None:
 
 
 def _cmd_step3(args: argparse.Namespace) -> None:
-    _setup_logger("step3", level="DEBUG" if args.verbose else "INFO")
+    _setup_logger("step3", level="DEBUG" if args.verbose else "INFO", log_dir=_LOG_DIR)
     logger.info("=== Step 3 시작: {} (version={}) ===", args.voice_dir, args.version)
     t0 = time.time()
     _run_step3(args.voice_dir, args.version, args.epochs, args.batch_size)
@@ -383,7 +386,7 @@ def _cmd_step3(args: argparse.Namespace) -> None:
 
 
 def _cmd_step4(args: argparse.Namespace) -> None:
-    _setup_logger("step4", level="DEBUG" if args.verbose else "INFO")
+    _setup_logger("step4", level="DEBUG" if args.verbose else "INFO", log_dir=_LOG_DIR)
     logger.info("=== Step 4 시작: {} (version={}) ===", args.voice_dir, args.version)
     t0 = time.time()
     _run_step4(
