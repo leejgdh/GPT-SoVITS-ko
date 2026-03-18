@@ -7,20 +7,6 @@
 
 ---
 
-## 원본 대비 변경 사항
-
-- **Gradio WebUI 전체 제거** → FastAPI REST API + ServiceContext 의존성 주입
-- **Voice Profile** — `voice.yaml` 기반 캐릭터 자체완결 구조 (가중치 경로, 감정 프리셋 포함)
-- **감정 프리셋(EmotionRef)** — 감정별 참조 오디오 매핑, API에서 `emotion` 파라미터로 선택
-- **ASR 라벨 검수 시스템** — CRUD + 상태관리(pending/approved/rejected) + 웹 UI
-- **원커맨드 파이프라인** — `python main.py pipeline` 으로 데이터 준비 → 전처리 → 학습 → 추론 일괄 실행
-- **라우터 5분할** — tts / labels / emotions / voices / system
-- **Voice Checker** — CNN 오디오 품질 분류 도구 내장 (`tools/voice-checker/`)
-- **`_setup_paths.py`** — sys.path 단일 소스 관리
-- `GPT_SoVITS/` 모델 아키텍처는 프리트레인 가중치 호환성을 위해 원본 유지
-
----
-
 ## 요구 환경
 
 | 항목 | 버전 |
@@ -37,121 +23,72 @@
 ```bash
 git clone https://github.com/leejgdh/GPT-SoVITS-ko.git
 cd GPT-SoVITS-ko
-
-# 전체 의존성 설치 (서버 + 파이프라인 + Voice Checker)
 uv sync
-```
-
-**설정 파일 생성:**
-
-```bash
 cp conf.example.yaml conf.yaml
 ```
 
 ---
 
-## 빠른 시작
+## 사용법: 음성 학습부터 TTS 합성까지
 
-### 1. 서버 실행
+### 1. 음성 데이터 준비
+
+학습할 화자의 음성 파일(WAV, 16bit, 44.1kHz+)을 `data/voice/{name}/raw_audio/`에 넣습니다.
 
 ```bash
-uv run python main.py
-uv run python main.py serve --port 8080
+mkdir -p data/voice/dahwi/raw_audio
+cp /path/to/recordings/*.wav data/voice/dahwi/raw_audio/
 ```
 
-### 2. 원커맨드 파이프라인
+### 2. 파이프라인 실행
 
-원본 오디오만 있으면 데이터 준비 → 전처리 → 학습 → 추론을 한 번에 실행합니다.
+원커맨드로 데이터 준비 → 전처리 → 학습 → 추론을 일괄 실행합니다.
 
 ```bash
-# data/voice/dahwi/raw_audio/ 에 음성 파일(WAV, 16bit, 44.1kHz+)을 넣고:
 uv run python main.py pipeline \
   --voice-dir data/voice/dahwi \
-  --output-text "합성할 텍스트" \
+  --output-text "합성 테스트용 텍스트" \
   --version v2Pro
 ```
 
-완료 시 `voice.yaml`이 자동 생성되고, 서버에서 바로 사용할 수 있습니다.
+파이프라인 내부 흐름:
 
-### 3. TTS 합성 요청
+```
+Step 1: 데이터 준비  — 노이즈 제거 → 슬라이싱 → 보컬 분리 → ASR → 품질 분류
+Step 2: 전처리      — 음소 추출 → HuBERT → 화자 임베딩 → Semantic 토큰
+Step 3: 학습        — GPT AR + SoVITS Vocoder
+Step 4: 추론        — 테스트 합성 + voice.yaml 자동 생성
+```
+
+각 step은 개별 실행할 수 있습니다. `uv run python main.py --help`로 전체 커맨드를 확인하세요.
+
+### 3. ASR 라벨 검수 (선택)
+
+Step 1 완료 후, Whisper가 생성한 자동 라벨을 웹 UI에서 검수할 수 있습니다.
+step/pipeline 실행 시 서버가 백그라운드에서 자동으로 시작됩니다.
+
+```
+http://localhost:9880/review
+```
+
+- 오디오 재생 + 파형 시각화
+- 라벨 상태 관리 (pending → approved / rejected)
+- 텍스트 인라인 편집, 감정 매핑
+
+### 4. 서버 실행
+
+```bash
+uv run python main.py              # 기본 포트 9880
+uv run python main.py serve --port 8080
+```
+
+### 5. TTS 합성 요청
 
 ```bash
 curl -X POST http://localhost:9880/tts \
   -H "Content-Type: application/json" \
   -d '{"voice": "dahwi", "text": "안녕하세요", "text_lang": "ko", "emotion": "default"}' \
   --output output.wav
-```
-
----
-
-## 파이프라인 상세
-
-4단계 파이프라인으로 구성되며, 각 단계를 개별 실행할 수도 있습니다.
-
-```
-[원본 오디오]
-    │
-    ├─ Step 1: 데이터 준비
-    │   ├─ FRCRN 노이즈 제거
-    │   ├─ 무음 기반 슬라이싱
-    │   ├─ UVR5 보컬 분리
-    │   ├─ Whisper ASR (음성→텍스트)
-    │   └─ Voice Checker CNN 품질 분류 (선택)
-    │
-    ├─ Step 2: 전처리
-    │   ├─ 음소 추출 (다국어)
-    │   ├─ HuBERT + wav32k 변환
-    │   ├─ 화자 임베딩 (v2Pro/v2ProPlus)
-    │   └─ Semantic 토큰 추출
-    │
-    ├─ Step 3: 학습
-    │   ├─ GPT AR 모델 (Text-to-Semantic)
-    │   └─ SoVITS Vocoder (VITS / CFM)
-    │
-    └─ Step 4: 추론
-        ├─ 테스트 합성
-        └─ voice.yaml 자동 생성
-```
-
-### 개별 스텝 실행
-
-각 step을 독립 실행하거나 내부 단계를 개별 실행할 수 있습니다.
-step/pipeline 실행 시 서버가 자동으로 백그라운드에서 시작되어 `/review` 등에 접근 가능합니다.
-
-```bash
-# Step 1: 데이터 준비 (전체)
-uv run python main.py step1 --voice-dir data/voice/dahwi
-
-# Step 1: 개별 실행
-uv run python main.py denoise --voice-dir data/voice/dahwi
-uv run python main.py slice --voice-dir data/voice/dahwi
-uv run python main.py uvr5 --voice-dir data/voice/dahwi
-uv run python main.py asr --voice-dir data/voice/dahwi
-
-# ASR 라벨 재분류 (Voice Checker CNN으로 pending → approved/rejected)
-uv run python main.py classify --voice-dir data/voice/dahwi
-
-# Step 2: 전처리 (전체)
-uv run python main.py step2 --voice-dir data/voice/dahwi --version v2Pro
-
-# Step 2: 개별 실행
-uv run python main.py get-text --voice-dir data/voice/dahwi --version v2Pro
-uv run python main.py get-hubert --voice-dir data/voice/dahwi --version v2Pro
-uv run python main.py get-sv --voice-dir data/voice/dahwi --version v2Pro
-uv run python main.py get-semantic --voice-dir data/voice/dahwi --version v2Pro
-
-# Step 3: 학습 (전체)
-uv run python main.py step3 --voice-dir data/voice/dahwi --version v2Pro --epochs 20
-
-# Step 3: 개별 실행
-uv run python main.py train-gpt --voice-dir data/voice/dahwi --version v2Pro
-uv run python main.py train-sovits --voice-dir data/voice/dahwi --version v2Pro
-
-# Step 4: 추론 + voice.yaml 생성
-uv run python main.py step4 --voice-dir data/voice/dahwi --version v2Pro --output-text "합성할 텍스트"
-
-# Step 1 건너뛰고 나머지 파이프라인 실행
-uv run python main.py pipeline --voice-dir data/voice/dahwi --output-text "텍스트" --skip step1
 ```
 
 ---
@@ -172,50 +109,27 @@ POST /tts
 | `emotion` | string | - | 감정 프리셋 (기본: `default`) |
 | `media_type` | string | - | 출력 포맷 (`wav`, `ogg`, `aac`, `raw`) |
 | `streaming_mode` | int | - | 0: 일괄, 1: fragment, 2: 스트리밍, 3: 고정 청크 |
-| `speed_factor` | float | - | 속도 조절 (기본: 1.0) |
-| `volume` | float | - | 볼륨 게인 (기본: 1.0) |
+| `speed_factor` | float | - | 속도 (기본: 1.0) |
 | `temperature` | float | - | 샘플링 온도 (기본: 1.0) |
 | `top_k` | int | - | Top-K 샘플링 (기본: 15) |
 
-### Voice 관리
+### 그 외 엔드포인트
 
-| 엔드포인트 | 메서드 | 설명 |
-|-----------|--------|------|
-| `/voices` | GET | voice 프로필 목록 + 현재 로드된 voice |
-| `/voices/{name}` | GET | voice 상세 (version, ref_lang, emotions) |
-
-### ASR 라벨 관리
-
-| 엔드포인트 | 메서드 | 설명 |
-|-----------|--------|------|
-| `/voices/{name}/labels` | GET | 라벨 목록 + 상태별 통계 |
-| `/voices/{name}/labels/{index}/audio` | GET | 라벨 오디오 스트리밍 |
-| `/voices/{name}/labels/{index}` | PUT | 라벨 텍스트/언어 수정 |
-| `/voices/{name}/labels/{index}/state` | PATCH | 상태 변경 (pending/approved/rejected) |
-| `/voices/{name}/labels/{index}` | DELETE | 라벨 + 오디오 삭제 |
-
-### 감정 매핑
-
-| 엔드포인트 | 메서드 | 설명 |
-|-----------|--------|------|
-| `/voices/{name}/emotions` | GET | 감정 목록 |
-| `/voices/{name}/emotions/{emotion}` | PUT | 라벨 인덱스 → 감정 매핑 |
-| `/voices/{name}/emotions/{emotion}` | DELETE | 감정 삭제 |
-
-### 시스템
-
-| 엔드포인트 | 메서드 | 설명 |
-|-----------|--------|------|
-| `/health` | GET | 헬스 체크 |
-| `/review` | GET | ASR 라벨 검수 UI |
-| `/control` | GET | 서버 제어 (`?command=restart\|exit`) |
+| 엔드포인트 | 설명 |
+|-----------|------|
+| `GET /voices` | Voice 목록 조회 |
+| `GET /voices/{name}` | Voice 상세 정보 |
+| `GET /voices/{name}/labels` | ASR 라벨 목록 + 통계 |
+| `GET /voices/{name}/emotions` | 감정 매핑 목록 |
+| `GET /health` | 헬스 체크 |
+| `GET /review` | ASR 라벨 검수 UI |
 
 ---
 
 ## Voice Profile
 
 각 캐릭터의 음성 설정은 `data/voice/{name}/voice.yaml`로 관리합니다.
-파이프라인 Step 4 완료 시 자동 생성되며, 감정 매핑은 API를 통해 추가합니다.
+파이프라인 Step 4 완료 시 자동 생성되며, 감정 매핑은 API 또는 검수 UI를 통해 추가합니다.
 
 ```yaml
 name: dahwi
@@ -227,144 +141,17 @@ emotions:
   default:
     ref_audio: step1/03_vocal/normal_001.flac
     ref_text: "평범한 톤의 참조 텍스트"
-  happy:
-    ref_audio: step1/03_vocal/happy_003.flac
-    ref_text: "기쁜 톤의 참조 텍스트"
 ```
-
----
-
-## 데이터 디렉토리 구조
-
-```
-data/voice/{character}/
-├── raw_audio/                # 원본 음성 파일 (WAV, 16bit, 44.1kHz+)
-├── step1/                    # 데이터 준비
-│   ├── 01_denoise/           #   FRCRN 노이즈 제거
-│   ├── 02_sliced/            #   무음 기반 슬라이싱
-│   ├── 03_vocal/             #   UVR5 보컬 분리
-│   └── 04_asr/               #   Whisper ASR 라벨 (.list)
-├── step2/{version}/          # 전처리 (음소, HuBERT, semantic)
-├── step3/{version}/          # 학습
-│   ├── 01_gpt_logs/          #   GPT 학습 로그 + 체크포인트
-│   ├── 02_gpt_weights/       #   GPT half-precision 가중치
-│   ├── 03_sovits_logs/       #   SoVITS 학습 로그 + 체크포인트
-│   └── 04_sovits_weights/    #   SoVITS half-precision 가중치
-├── step4/{version}/          # 추론 출력
-└── voice.yaml                # Voice Profile (자동 생성)
-```
-
----
-
-## 도구
-
-### ASR 라벨 검수 UI
-
-서버 실행 후 `/review` 엔드포인트로 접속합니다.
-Whisper ASR이 생성한 라벨을 검수하고 감정 매핑까지 수행하는 웹 UI입니다.
-
-- 라벨 상태 관리: pending → approved / rejected
-- 오디오 재생 + 파형 시각화
-- 텍스트 인라인 편집
-- 감정 프리셋 매핑
-- 빈 텍스트 라벨 일괄 삭제
-
-```bash
-uv run python main.py serve
-# → http://localhost:9880/review
-```
-
-### Voice Checker
-
-`tools/voice-checker/` — 오디오 품질을 이진 분류(good/bad)하는 경량 CNN 도구입니다.
-멜 스펙트로그램 기반 3층 CNN (~83K params)으로, ASR 파이프라인과 연동됩니다.
-
-```bash
-# 1. 라벨링 UI에서 good/bad 분류 (서버 실행 후 접속)
-uv run python main.py
-# → http://localhost:9880/voice-checker/labeling
-
-# 2. CNN 학습
-uv run python tools/voice-checker/main.py train --voice-dir data/voice/dahwi
-
-# 3. ASR 라벨 재분류 (pending → approved/rejected)
-uv run python main.py classify --voice-dir data/voice/dahwi
-
-# 4. 품질 예측 (단독)
-uv run python tools/voice-checker/main.py predict /path/to/audio
-```
-
-`conf.yaml`에 `voice_checker` 섹션을 활성화하면 step1 ASR에서 자동으로 CNN 품질 분류를 적용합니다.
 
 ---
 
 ## 지원 모델 버전
 
-| 버전 | 아키텍처 | 학습 스크립트 | 특징 |
-|------|---------|-------------|------|
-| v1, v2 | SynthesizerTrn (VITS) | `s2_train_vits.py` | v2에서 한국어 추가 |
-| **v2Pro**, v2ProPlus | SynthesizerTrn + 화자 임베딩 | `s2_train_vits.py` | v2 비용으로 v3급 유사도 |
-| v3, v4 | SynthesizerTrnV3 (CFM/DiT) | `s2_train_cfm.py` | 참조 오디오 충실, 감정 표현 우수 |
-
----
-
-## 설정
-
-`conf.example.yaml`을 복사하여 `conf.yaml`로 사용합니다.
-기본값은 코드에 내장되어 있으며, 변경이 필요한 항목만 기재하면 됩니다.
-
-```yaml
-voices_dir: data/voice        # voice 디렉토리 루트
-default_voice: dahwi           # 서버 시작 시 기본 로드할 voice (선택)
-
-# service:                     # 서버 설정 (선택, CLI 인자로 오버라이드 가능)
-#   host: 0.0.0.0
-#   port: 9880
-
-# voice_checker:               # Voice Checker 설정 (선택)
-#   training:
-#     epochs: 50
-#     batch_size: 16
-#   inference:
-#     model_path: "data/voice-checker/models/best_model.pth"
-#   service:
-#     port: 9890
-```
-
----
-
-## 프로젝트 구조
-
-```
-GPT-SoVITS-ko/
-├── main.py                    # 진입점 (serve / pipeline / step / 하위 커맨드)
-├── conf.example.yaml          # 설정 템플릿
-├── pyproject.toml             # 의존성 정의
-├── src/
-│   ├── cli/                   # CLI 모듈 (logger, parser, pipeline, serve, server)
-│   ├── config/                # Config, VoiceProfile, VoiceCheckerConfig
-│   └── server/
-│       ├── app.py             # FastAPI 팩토리
-│       ├── context.py         # ServiceContext (DI 컨테이너)
-│       └── routers/           # 도메인별 라우터 (tts, voices, labels, emotions, system, quality)
-├── scripts/
-│   ├── data_preparation/      # Step 1: denoise, slice, UVR5, ASR
-│   ├── preprocessing/         # Step 2: text, hubert, sv, semantic
-│   ├── training/              # Step 3: GPT AR + SoVITS
-│   ├── export/                # TorchScript, ONNX export
-│   └── inference/             # Step 4: CLI 추론, 스트리밍
-├── tools/
-│   ├── utils/                 # 공용 유틸 (audio.py, download.py)
-│   ├── audio/                 # 오디오 처리 (slicer.py, super_res.py)
-│   ├── training/              # 학습 인프라 유틸
-│   ├── voice-checker/         # CNN 오디오 품질 분류 도구 (vc/)
-│   └── label-review.html      # ASR 라벨 검수 UI
-├── GPT_SoVITS/                # 모델 아키텍처 (원본 유지)
-└── data/
-    ├── voice/{character}/     # 캐릭터별 음성 데이터 + voice.yaml
-    ├── voice-checker/models/  # Voice Checker CNN 모델
-    └── models/                # 프리트레인드 모델
-```
+| 버전 | 아키텍처 | 특징 |
+|------|---------|------|
+| v2 | SynthesizerTrn (VITS) | 한국어 지원 |
+| **v2Pro** | SynthesizerTrn + 화자 임베딩 | v2 비용으로 v3급 유사도 |
+| v3, v4 | SynthesizerTrnV3 (CFM/DiT) | 감정 표현 우수 |
 
 ---
 
