@@ -111,8 +111,8 @@ def main() -> None:
         logger.info("ERes2NetV2 모델 다운로드 중...")
         ensure_file(
             local_path=args.sv_path,
-            repo_id="RVC-Boss/GPT-SoVITS",
-            filename="GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt",
+            repo_id="lj1995/GPT-SoVITS",
+            filename="sv/pretrained_eres2netv2w24s4ep4.ckpt",
         )
         if not os.path.exists(args.sv_path):
             raise FileNotFoundError(f"ERes2NetV2 모델 다운로드 실패: {args.sv_path}")
