@@ -146,65 +146,168 @@ def _ensure_voice_yaml(voice_dir: str) -> None:
     logger.info("voice.yaml 초기 생성: {} (available: false)", yaml_path)
 
 
-def run_step1(voice_dir: str, config_path: str = "conf.yaml") -> None:
-    _ensure_voice_yaml(voice_dir)
-    py = sys.executable
-    _run([py, "scripts/data_preparation/denoise.py", "--voice-dir", voice_dir],
-         "Step1-1 denoise")
-    _run([py, "scripts/data_preparation/slice_audio.py", "--voice-dir", voice_dir],
-         "Step1-2 slice_audio")
-    _run([py, "scripts/data_preparation/uvr5_separate.py", "--voice-dir", voice_dir],
-         "Step1-3 uvr5_separate")
+# ---------------------------------------------------------------------------
+# 개별 실행 함수
+# ---------------------------------------------------------------------------
 
-    asr_cmd = [py, "scripts/data_preparation/asr_whisper.py", "--voice-dir", voice_dir]
+
+def run_denoise(voice_dir: str) -> None:
+    _run([sys.executable, "scripts/data_preparation/denoise.py",
+          "--voice-dir", voice_dir], "denoise")
+
+
+def run_slice(voice_dir: str) -> None:
+    _run([sys.executable, "scripts/data_preparation/slice_audio.py",
+          "--voice-dir", voice_dir], "slice")
+
+
+def run_uvr5(voice_dir: str) -> None:
+    _run([sys.executable, "scripts/data_preparation/uvr5_separate.py",
+          "--voice-dir", voice_dir], "uvr5")
+
+
+def run_asr(voice_dir: str, config_path: str = "conf.yaml") -> None:
+    cmd = [sys.executable, "scripts/data_preparation/asr_whisper.py",
+           "--voice-dir", voice_dir]
     vc_model = _load_voice_checker_model(config_path)
     if vc_model:
-        asr_cmd += ["--voice-checker-model", vc_model]
+        cmd += ["--voice-checker-model", vc_model]
         logger.info("Voice Checker 활성화: {}", vc_model)
-    _run(asr_cmd, "Step1-4 asr_whisper")
+    _run(cmd, "asr")
+
+
+def run_classify(voice_dir: str, config_path: str = "conf.yaml") -> None:
+    """vocal.list의 pending 상태를 Voice Checker CNN으로 재분류한다."""
+    vc_model = _load_voice_checker_model(config_path)
+    if vc_model is None:
+        logger.error("Voice Checker 모델이 없습니다. conf.yaml의 voice_checker 설정을 확인하세요.")
+        sys.exit(1)
+
+    # voice-checker predictor 로드
+    vc_root = os.path.join(_PROJECT_ROOT, "tools", "voice-checker")
+    if vc_root not in sys.path:
+        sys.path.insert(0, vc_root)
+    from src.config.config import VoiceCheckerConfig
+    from vc.predictor import VoiceQualityPredictor
+
+    predictor = VoiceQualityPredictor(vc_model, VoiceCheckerConfig())
+
+    # vocal.list 읽기
+    asr_dir = os.path.join(voice_dir, "step1", "04_asr")
+    list_files = glob.glob(os.path.join(asr_dir, "*.list"))
+    if not list_files:
+        logger.error("ASR 라벨 파일이 없습니다: {}", asr_dir)
+        sys.exit(1)
+
+    for list_file in list_files:
+        with open(list_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        updated = 0
+        output = []
+        for line in lines:
+            parts = line.strip().split("|")
+            if len(parts) < 5:
+                output.append(line.rstrip())
+                continue
+
+            audio_path, category, lang, text, state = parts[0], parts[1], parts[2], parts[3], parts[4]
+
+            if state != "pending":
+                output.append(line.rstrip())
+                continue
+
+            is_good, confidence = predictor.predict(audio_path)
+            if is_good:
+                new_state = "approved"
+            else:
+                new_state = "rejected"
+            output.append(f"{audio_path}|{category}|{lang}|{text}|{new_state}")
+            updated += 1
+            logger.debug("{} -> {} (confidence={:.3f})", os.path.basename(audio_path), new_state, confidence)
+
+        with open(list_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(output) + "\n")
+
+        logger.info("{}: {} 건 재분류 완료", os.path.basename(list_file), updated)
+
+
+def run_get_text(voice_dir: str, version: str) -> None:
+    _run([sys.executable, "scripts/preprocessing/1-get-text.py",
+          "--voice-dir", voice_dir, "--version", version], "get-text")
+
+
+def run_get_hubert(voice_dir: str, version: str) -> None:
+    _run([sys.executable, "scripts/preprocessing/2-get-hubert-wav32k.py",
+          "--voice-dir", voice_dir, "--version", version], "get-hubert")
+
+
+def run_get_sv(voice_dir: str, version: str) -> None:
+    _run([sys.executable, "scripts/preprocessing/2-get-sv.py",
+          "--voice-dir", voice_dir, "--version", version], "get-sv")
+
+
+def run_get_semantic(voice_dir: str, version: str) -> None:
+    _run([sys.executable, "scripts/preprocessing/3-get-semantic.py",
+          "--voice-dir", voice_dir, "--version", version], "get-semantic")
+
+
+def run_train_gpt(
+    voice_dir: str, version: str,
+    epochs: int | None = None, batch_size: int | None = None,
+) -> None:
+    cmd = [sys.executable, "scripts/training/s1_train.py",
+           "--voice-dir", voice_dir, "--version", version]
+    if epochs is not None:
+        cmd += ["--epochs", str(epochs)]
+    if batch_size is not None:
+        cmd += ["--batch-size", str(batch_size)]
+    _run(cmd, "GPT train")
+
+
+def run_train_sovits(
+    voice_dir: str, version: str,
+    epochs: int | None = None, batch_size: int | None = None,
+) -> None:
+    sovits_script = _SOVITS_TRAIN_SCRIPT[version]
+    cmd = [sys.executable, sovits_script,
+           "--voice-dir", voice_dir, "--version", version]
+    if epochs is not None:
+        cmd += ["--epochs", str(epochs)]
+    if batch_size is not None:
+        cmd += ["--batch-size", str(batch_size)]
+    _run(cmd, "SoVITS train")
+
+
+# ---------------------------------------------------------------------------
+# step 묶음 실행 함수
+# ---------------------------------------------------------------------------
+
+
+def run_step1(voice_dir: str, config_path: str = "conf.yaml") -> None:
+    _ensure_voice_yaml(voice_dir)
+    run_denoise(voice_dir)
+    run_slice(voice_dir)
+    run_uvr5(voice_dir)
+    run_asr(voice_dir, config_path)
 
 
 def run_step2(voice_dir: str, version: str) -> None:
-    py = sys.executable
     _clean_step_dir(voice_dir, "step2", version, "전처리")
-    _run([py, "scripts/preprocessing/1-get-text.py",
-          "--voice-dir", voice_dir, "--version", version],
-         "Step2-1 get-text")
-    _run([py, "scripts/preprocessing/2-get-hubert-wav32k.py",
-          "--voice-dir", voice_dir, "--version", version],
-         "Step2-2 get-hubert-wav32k")
+    run_get_text(voice_dir, version)
+    run_get_hubert(voice_dir, version)
     if version in _SV_VERSIONS:
-        _run([py, "scripts/preprocessing/2-get-sv.py",
-              "--voice-dir", voice_dir, "--version", version],
-             "Step2-SV get-sv")
-    _run([py, "scripts/preprocessing/3-get-semantic.py",
-          "--voice-dir", voice_dir, "--version", version],
-         "Step2-3 get-semantic")
+        run_get_sv(voice_dir, version)
+    run_get_semantic(voice_dir, version)
 
 
 def run_step3(
     voice_dir: str, version: str,
     epochs: int | None = None, batch_size: int | None = None,
 ) -> None:
-    py = sys.executable
     _clean_step_dir(voice_dir, "step3", version, "학습")
-
-    gpt_cmd = [py, "scripts/training/s1_train.py",
-               "--voice-dir", voice_dir, "--version", version]
-    if epochs is not None:
-        gpt_cmd += ["--epochs", str(epochs)]
-    if batch_size is not None:
-        gpt_cmd += ["--batch-size", str(batch_size)]
-    _run(gpt_cmd, "Step3-1 GPT train")
-
-    sovits_script = _SOVITS_TRAIN_SCRIPT[version]
-    sovits_cmd = [py, sovits_script,
-                  "--voice-dir", voice_dir, "--version", version]
-    if epochs is not None:
-        sovits_cmd += ["--epochs", str(epochs)]
-    if batch_size is not None:
-        sovits_cmd += ["--batch-size", str(batch_size)]
-    _run(sovits_cmd, "Step3-2 SoVITS train")
+    run_train_gpt(voice_dir, version, epochs, batch_size)
+    run_train_sovits(voice_dir, version, epochs, batch_size)
 
 
 def run_step4(
@@ -238,6 +341,71 @@ def run_step4(
 # ---------------------------------------------------------------------------
 # CLI 커맨드
 # ---------------------------------------------------------------------------
+
+
+def _log_step(name: str, args: argparse.Namespace):
+    setup_logger(name, level="DEBUG" if args.verbose else "INFO")
+
+
+# ── 하위 커맨드 ──
+
+
+def cmd_denoise(args: argparse.Namespace) -> None:
+    _log_step("denoise", args)
+    run_denoise(args.voice_dir)
+
+
+def cmd_slice(args: argparse.Namespace) -> None:
+    _log_step("slice", args)
+    run_slice(args.voice_dir)
+
+
+def cmd_uvr5(args: argparse.Namespace) -> None:
+    _log_step("uvr5", args)
+    run_uvr5(args.voice_dir)
+
+
+def cmd_asr(args: argparse.Namespace) -> None:
+    _log_step("asr", args)
+    run_asr(args.voice_dir, args.config)
+
+
+def cmd_classify(args: argparse.Namespace) -> None:
+    _log_step("classify", args)
+    run_classify(args.voice_dir, args.config)
+
+
+def cmd_get_text(args: argparse.Namespace) -> None:
+    _log_step("get-text", args)
+    run_get_text(args.voice_dir, args.version)
+
+
+def cmd_get_hubert(args: argparse.Namespace) -> None:
+    _log_step("get-hubert", args)
+    run_get_hubert(args.voice_dir, args.version)
+
+
+def cmd_get_sv(args: argparse.Namespace) -> None:
+    _log_step("get-sv", args)
+    run_get_sv(args.voice_dir, args.version)
+
+
+def cmd_get_semantic(args: argparse.Namespace) -> None:
+    _log_step("get-semantic", args)
+    run_get_semantic(args.voice_dir, args.version)
+
+
+def cmd_train_gpt(args: argparse.Namespace) -> None:
+    _log_step("train-gpt", args)
+    run_train_gpt(args.voice_dir, args.version, args.epochs, args.batch_size)
+
+
+def cmd_train_sovits(args: argparse.Namespace) -> None:
+    _log_step("train-sovits", args)
+    run_train_sovits(args.voice_dir, args.version, args.epochs, args.batch_size)
+
+
+# ── step 묶음 커맨드 ──
 
 
 def cmd_step1(args: argparse.Namespace) -> None:
