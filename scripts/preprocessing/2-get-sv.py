@@ -30,7 +30,7 @@ import torch
 import torchaudio
 from ERes2NetV2 import ERes2NetV2
 
-from tools.my_utils import clean_path
+from tools.utils.audio import clean_path
 
 _DEFAULT_SV_PATH = "GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt"
 

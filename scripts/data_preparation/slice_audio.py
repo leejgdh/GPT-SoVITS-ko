@@ -25,8 +25,8 @@ import numpy as np
 from loguru import logger
 from scipy.io import wavfile
 
-from tools.my_utils import load_audio
-from tools.slicer2 import Slicer
+from tools.utils.audio import load_audio
+from tools.audio.slicer import Slicer
 
 
 def _parse_args() -> argparse.Namespace:

@@ -35,8 +35,8 @@ from loguru import logger
 from mdxnet import MDXNetDereverb
 from vr import AudioPre, AudioPreDeEcho
 
-from tools.dl_utils import ensure_dir, ensure_file
-from tools.my_utils import clean_path
+from tools.utils.download import ensure_dir, ensure_file
+from tools.utils.audio import clean_path
 
 _HF_REPO_ID = "lj1995/VoiceConversionWebUI"
 _HF_SUBFOLDER = "uvr5_weights"

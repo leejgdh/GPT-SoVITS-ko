@@ -28,8 +28,8 @@ from loguru import logger
 from tqdm import tqdm
 
 from tools.asr.config import get_models
-from tools.dl_utils import download_whisper_model
-from tools.my_utils import load_audio, load_cudnn
+from tools.utils.download import download_whisper_model
+from tools.utils.audio import load_audio, load_cudnn
 
 _LANGUAGE_CODES = ["ko", "en", "ja", "auto"]
 _AUDIO_SR = 32000

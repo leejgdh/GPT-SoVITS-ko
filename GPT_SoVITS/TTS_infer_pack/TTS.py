@@ -34,7 +34,7 @@ from sv import SV
 from loguru import logger
 
 try:
-    from tools.audio_sr import AP_BWE
+    from tools.audio.super_res import AP_BWE
 except ImportError:
     AP_BWE = None
 from TTS_infer_pack.text_segmentation_method import splits
