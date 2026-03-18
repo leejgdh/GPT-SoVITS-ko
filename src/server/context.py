@@ -57,7 +57,7 @@ class ServiceContext:
         # voice_checker 설정이 있으면 데이터 경로 설정
         if config.voice_checker is not None:
             project_root = Path(__file__).resolve().parents[2]
-            ctx._vc_data_dir = project_root / "tools" / "voice-checker" / "data"
+            ctx._vc_data_dir = project_root / "data" / "voice-checker"
             ctx._vc_labels_file = ctx._vc_data_dir / "labels.json"
             logger.info("Voice Checker 활성화: {}", ctx._vc_data_dir)
 

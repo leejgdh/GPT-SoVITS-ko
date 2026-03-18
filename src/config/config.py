@@ -37,7 +37,7 @@ class VoiceCheckerConfig:
         "noise_std": 0.005, "minority_oversample": 5,
     })
     inference: dict = field(default_factory=lambda: {
-        "model_path": "tools/voice-checker/models/best_model.pth",
+        "model_path": "data/voice-checker/models/best_model.pth",
         "threshold": 0.5,
     })
     service: dict = field(default_factory=lambda: {

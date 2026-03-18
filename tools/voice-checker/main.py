@@ -32,8 +32,11 @@ _FILE_FMT = (
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
-_DATA_DIR = _PROJECT_ROOT / "data"
+_GPT_SOVITS_ROOT = _PROJECT_ROOT.parents[1]
+_DATA_DIR = _GPT_SOVITS_ROOT / "data" / "voice-checker"
 _LABELS_FILE = _DATA_DIR / "labels.json"
+_MODELS_DIR = _DATA_DIR / "models"
+_LOG_DIR = _GPT_SOVITS_ROOT / "logs"
 _AUDIO_EXTS = {".wav", ".flac", ".mp3", ".ogg", ".m4a"}
 
 
@@ -224,10 +227,10 @@ def _cmd_train(args: argparse.Namespace) -> None:
     _setup_logger(
         "voice_checker",
         level="DEBUG" if args.verbose else config.log_level,
-        log_dir=_PROJECT_ROOT / "logs",
+        log_dir=_LOG_DIR,
     )
 
-    run_training(config, _DATA_DIR, _LABELS_FILE, _PROJECT_ROOT / "models")
+    run_training(config, _DATA_DIR, _LABELS_FILE, _MODELS_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +249,7 @@ def _cmd_predict(args: argparse.Namespace) -> None:
         level="DEBUG" if args.verbose else config.log_level,
     )
 
-    model_path = args.model or str(_PROJECT_ROOT / config.inference.model_path)
+    model_path = args.model or str(_MODELS_DIR / config.inference.model_path)
     if not os.path.exists(model_path):
         logger.error("모델 파일을 찾을 수 없습니다: {}", model_path)
         sys.exit(1)

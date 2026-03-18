@@ -41,7 +41,7 @@ class AugmentationConfig:
 
 @dataclass
 class InferenceConfig:
-    model_path: str = "models/best_model.pth"
+    model_path: str = "best_model.pth"
     threshold: float = 0.5
 
 

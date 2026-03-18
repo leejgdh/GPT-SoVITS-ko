@@ -272,7 +272,7 @@ uv run python tools/voice-checker/main.py serve
 uv run python tools/voice-checker/main.py train
 
 # 4. 품질 예측
-uv run python tools/voice-checker/main.py predict /path/to/audio -m tools/voice-checker/models/best_model.pth
+uv run python tools/voice-checker/main.py predict /path/to/audio -m data/voice-checker/models/best_model.pth
 ```
 
 **ASR 파이프라인 연동:**
@@ -280,7 +280,7 @@ uv run python tools/voice-checker/main.py predict /path/to/audio -m tools/voice-
 ```bash
 uv run python scripts/data_preparation/asr_whisper.py \
   --voice-dir data/voice/dahwi \
-  --voice-checker-model tools/voice-checker/models/best_model.pth
+  --voice-checker-model data/voice-checker/models/best_model.pth
 ```
 
 > Voice Checker는 루트 pyproject.toml의 의존성을 공유합니다. 별도 설치가 필요 없습니다.
@@ -318,7 +318,7 @@ default_voice: dahwi           # 서버 시작 시 기본 로드할 voice (선�
 #     epochs: 50
 #     batch_size: 16
 #   inference:
-#     model_path: "tools/voice-checker/models/best_model.pth"
+#     model_path: "data/voice-checker/models/best_model.pth"
 #   service:
 #     port: 9890
 ```

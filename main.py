@@ -242,7 +242,7 @@ def _load_voice_checker_model(config_path: str = "conf.yaml") -> str | None:
     if vc is None:
         return None
     model_path = vc.get("inference", {}).get(
-        "model_path", "tools/voice-checker/models/best_model.pth",
+        "model_path", "data/voice-checker/models/best_model.pth",
     )
     if Path(model_path).exists():
         return model_path

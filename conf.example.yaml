@@ -19,7 +19,7 @@ default_voice: dahwi
 # ---------------------------------------------------------------------------
 # voice_checker:
 #   inference:
-#     model_path: "tools/voice-checker/models/best_model.pth"
+#     model_path: "data/voice-checker/models/best_model.pth"
 #     threshold: 0.5
 #   training:
 #     batch_size: 16
