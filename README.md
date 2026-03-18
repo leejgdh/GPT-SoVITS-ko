@@ -343,9 +343,11 @@ GPT-SoVITS-ko/
 │   ├── export/                # TorchScript, ONNX export
 │   └── inference/             # Step 4: CLI 추론, 스트리밍
 ├── tools/
+│   ├── utils/                 # 공용 유틸 (audio.py, download.py)
+│   ├── audio/                 # 오디오 처리 (slicer.py, super_res.py)
+│   ├── training/              # 학습 인프라 유틸
 │   ├── voice-checker/         # CNN 오디오 품질 분류 도구
-│   ├── label-review.html      # ASR 라벨 검수 UI
-│   └── training/              # 학습 인프라 유틸
+│   └── label-review.html      # ASR 라벨 검수 UI
 ├── GPT_SoVITS/                # 모델 아키텍처 (원본 유지)
 └── data/
     ├── voice/{character}/     # 캐릭터별 음성 데이터
@@ -365,8 +367,8 @@ GPT-SoVITS-ko/
 `src/`, `scripts/`, `main.py`와 아래 `tools/` 내 파일:
 
 - `tools/voice-checker/` — 오디오 품질 분류 도구
+- `tools/utils/` — 공용 유틸 (오디오 로드, 모델 다운로드)
 - `tools/training/` — 학습 인프라
-- `tools/dl_utils.py` — 모델 다운로드 유틸
 - `tools/label-review.html` — ASR 라벨 검수 UI
 
 ### 원본 GPT-SoVITS 유래 코드 (MIT, RVC-Boss)
@@ -374,8 +376,8 @@ GPT-SoVITS-ko/
 | 컴포넌트 | 경로 |
 |----------|------|
 | 모델 아키텍처 | `GPT_SoVITS/` |
-| 오디오 슬라이서 | `tools/slicer2.py` |
-| 오디오 유틸 | `tools/my_utils.py`, `tools/audio_sr.py` |
+| 오디오 슬라이서 | `tools/audio/slicer.py` |
+| 오디오 유틸 | `tools/utils/audio.py`, `tools/audio/super_res.py` |
 | ASR 설정 | `tools/asr/` |
 | 보컬 분리 (UVR5) | `tools/uvr5/` |
 | BigVGAN (NVIDIA) | `GPT_SoVITS/BigVGAN/` (MIT + 하위 라이선스 — `incl_licenses/` 참조) |
