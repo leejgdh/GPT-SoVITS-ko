@@ -25,7 +25,7 @@ setup_paths()
 
 from text.cleaner import clean_text
 
-from tools.my_utils import clean_path
+from tools.utils.audio import clean_path
 
 _LANG_MAP: dict[str, str] = {
     "JP": "ja", "jp": "ja", "JA": "ja", "ja": "ja",

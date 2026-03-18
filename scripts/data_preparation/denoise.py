@@ -30,7 +30,7 @@ from modelscope.utils.constant import Tasks
 from scipy.io import wavfile
 from tqdm import tqdm
 
-from tools.my_utils import load_audio
+from tools.utils.audio import load_audio
 
 _DEFAULT_MODEL_PATH = "data/models/denoise/speech_frcrn_ans_cirm_16k"
 _FALLBACK_MODEL_ID = "damo/speech_frcrn_ans_cirm_16k"

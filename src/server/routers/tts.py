@@ -9,7 +9,7 @@ from typing import Union
 
 import numpy as np
 import soundfile as sf
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from loguru import logger
 from pydantic import BaseModel
@@ -248,6 +248,12 @@ async def tts_post(request: Request, body: TTSRequest):
     """voice 기반 TTS 합성."""
     ctx = _get_context(request)
 
+    if ctx.tts is None:
+        raise HTTPException(
+            503,
+            detail="TTS 파이프라인이 초기화되지 않았습니다. pretrained 모델을 설치하세요.",
+        )
+
     logger.info(
         "TTS 요청: voice={}, emotion={}, text='{}', lang={}, speed={}, volume={}, media={}",
         body.voice, body.emotion,
@@ -261,6 +267,11 @@ async def tts_post(request: Request, body: TTSRequest):
         return JSONResponse(
             status_code=404,
             content={"message": f"voice '{body.voice}' not found"},
+        )
+    if not profile.available:
+        return JSONResponse(
+            status_code=503,
+            content={"message": f"voice '{body.voice}'는 아직 학습이 완료되지 않았습니다 (available: false)"},
         )
 
     # voice.yaml 기본값 + 요청 오버라이드

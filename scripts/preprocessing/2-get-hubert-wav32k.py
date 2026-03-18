@@ -32,8 +32,8 @@ import torch
 from feature_extractor import cnhubert
 from scipy.io import wavfile
 
-from tools.dl_utils import ensure_dir
-from tools.my_utils import clean_path, load_audio
+from tools.utils.download import ensure_dir
+from tools.utils.audio import clean_path, load_audio
 
 _DEFAULT_CNHUBERT_DIR = "GPT_SoVITS/pretrained_models/chinese-hubert-base"
 _CNHUBERT_HF_REPO = "TencentGameMate/chinese-hubert-base"

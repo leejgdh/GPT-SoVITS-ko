@@ -9,7 +9,7 @@ from tqdm import tqdm
 from module.mel_processing import spectrogram_torch, spec_to_mel_torch
 from text import cleaned_text_to_sequence
 import torch.nn.functional as F
-from tools.my_utils import load_audio
+from tools.utils.audio import load_audio
 
 version = os.environ.get("version", None)
 

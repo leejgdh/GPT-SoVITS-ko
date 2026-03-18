@@ -32,7 +32,7 @@ from torch.nn import functional as F
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 from TTS_infer_pack.TextPreprocessor import TextPreprocessor
 
-from tools.my_utils import load_audio
+from tools.utils.audio import load_audio
 
 # TextPreprocessor 래퍼 — inference_webui.get_phones_and_bert 대체
 _text_preprocessor = None

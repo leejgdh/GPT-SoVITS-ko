@@ -27,8 +27,8 @@ setup_paths()
 import torch
 import utils
 
-from tools.dl_utils import ensure_file
-from tools.my_utils import clean_path
+from tools.utils.download import ensure_file
+from tools.utils.audio import clean_path
 
 logging.getLogger("numba").setLevel(logging.WARNING)
 

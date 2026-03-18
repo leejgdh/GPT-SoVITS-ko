@@ -1,0 +1,37 @@
+# GPT-SoVITS TTS Service 설정
+# 기본값은 코드에 내장. 변경이 필요한 항목만 기재.
+
+# 서버 설정 (기본: host=0.0.0.0, port=9880)
+# service:
+#   host: 0.0.0.0
+#   port: 9880
+
+# voice 디렉토리 루트 (하위에서 voice.yaml을 스캔)
+voices_dir: data/voice
+
+# 서버 시작 시 기본 로드할 voice (optional)
+default_voice: dahwi
+
+# ---------------------------------------------------------------------------
+# Voice Checker (optional)
+# 이 섹션의 주석을 해제하면 step1 ASR에서 CNN 품질 분류를 자동 적용합니다.
+# 주석 상태 → Voice Checker 비활성화 (기본)
+# ---------------------------------------------------------------------------
+# voice_checker:
+#   inference:
+#     model_path: "data/voice-checker/models/best_model.pth"
+#     threshold: 0.5
+#   training:
+#     batch_size: 16
+#     epochs: 50
+#     learning_rate: 0.001
+#     early_stop_patience: 10
+#   audio:
+#     sample_rate: 44100
+#     n_mels: 64
+#     n_fft: 1024
+#     hop_length: 512
+#     target_length: 128
+#   service:
+#     host: "0.0.0.0"
+#     port: 9890
