@@ -32,6 +32,3 @@ default_voice: dahwi
 #     n_fft: 1024
 #     hop_length: 512
 #     target_length: 128
-#   service:
-#     host: "0.0.0.0"
-#     port: 9890
