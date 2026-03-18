@@ -232,18 +232,15 @@ def _clean_step_dir(voice_dir: str, step: str, version: str, label: str) -> None
 
 def _load_voice_checker_model(config_path: str = "conf.yaml") -> str | None:
     """conf.yaml에서 voice_checker 설정이 있으면 모델 경로를 반환한다."""
+    from src.config.config import Config, load_config
+
     path = Path(config_path)
     if not path.exists():
         return None
-    import yaml
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    vc = data.get("voice_checker")
-    if vc is None:
+    config = load_config(path)
+    if config.voice_checker is None:
         return None
-    model_path = vc.get("inference", {}).get(
-        "model_path", "data/voice-checker/models/best_model.pth",
-    )
+    model_path = config.voice_checker.inference.model_path
     if Path(model_path).exists():
         return model_path
     logger.warning("voice_checker 모델 경로가 존재하지 않습니다: {}", model_path)
@@ -527,6 +524,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- step2 ---
     sp_s2 = sub.add_parser("step2", help="전처리 (text → hubert → semantic)")
     sp_s2.add_argument("-v", "--verbose", action="store_true")
+    sp_s2.add_argument("-c", "--config", default="conf.yaml", help="설정 파일 경로")
     sp_s2.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")
     sp_s2.add_argument("--version", default="v2Pro",
                         choices=["v2", "v3", "v4", "v2Pro", "v2ProPlus"])
@@ -534,6 +532,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- step3 ---
     sp_s3 = sub.add_parser("step3", help="학습 (GPT AR + SoVITS)")
     sp_s3.add_argument("-v", "--verbose", action="store_true")
+    sp_s3.add_argument("-c", "--config", default="conf.yaml", help="설정 파일 경로")
     sp_s3.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")
     sp_s3.add_argument("--version", default="v2Pro",
                         choices=["v2", "v3", "v4", "v2Pro", "v2ProPlus"])
@@ -543,6 +542,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- step4 ---
     sp_s4 = sub.add_parser("step4", help="추론 + voice.yaml 자동 생성")
     sp_s4.add_argument("-v", "--verbose", action="store_true")
+    sp_s4.add_argument("-c", "--config", default="conf.yaml", help="설정 파일 경로")
     sp_s4.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")
     sp_s4.add_argument("--version", default="v2Pro",
                         choices=["v2", "v3", "v4", "v2Pro", "v2ProPlus"])

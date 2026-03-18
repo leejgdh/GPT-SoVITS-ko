@@ -32,7 +32,8 @@ _FILE_FMT = (
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
-_GPT_SOVITS_ROOT = _PROJECT_ROOT.parents[1]
+# voice-checker/ → tools/ → gpt-sovits/
+_GPT_SOVITS_ROOT = _PROJECT_ROOT.parent.parent
 _DATA_DIR = _GPT_SOVITS_ROOT / "data" / "voice-checker"
 _LABELS_FILE = _DATA_DIR / "labels.json"
 _MODELS_DIR = _DATA_DIR / "models"
@@ -187,35 +188,24 @@ def _cmd_serve(args: argparse.Namespace) -> None:
 
 
 def _load_vc_config(config_path: Path):
-    """루트 conf.yaml의 voice_checker 섹션에서 Config를 로드한다."""
-    from src.config.config import Config, load_config
+    """루트 conf.yaml에서 voice_checker 설정을 로드한다.
+
+    VoiceCheckerConfig를 반환. 미설정 시 기본값.
+    """
+    sys.path.insert(0, str(_GPT_SOVITS_ROOT))
+    try:
+        from src.config.config import (
+            VoiceCheckerConfig,
+            load_config as load_root_config,
+        )
+    finally:
+        sys.path.remove(str(_GPT_SOVITS_ROOT))
 
     if not config_path.exists():
-        return Config()
+        return VoiceCheckerConfig()
 
-    # 루트 conf.yaml에서 voice_checker 섹션 추출
-    import yaml
-    with open(config_path, encoding="utf-8") as f:
-        raw = yaml.safe_load(f) or {}
-
-    vc = raw.get("voice_checker", {})
-    return load_config_from_dict(vc)
-
-
-def load_config_from_dict(raw: dict):
-    """dict에서 voice-checker Config를 생성한다."""
-    from src.config.config import (
-        AudioConfig, AugmentationConfig, Config,
-        InferenceConfig, ServiceConfig, TrainingConfig,
-    )
-    return Config(
-        audio=AudioConfig(**raw["audio"]) if "audio" in raw else AudioConfig(),
-        training=TrainingConfig(**raw["training"]) if "training" in raw else TrainingConfig(),
-        augmentation=AugmentationConfig(**raw["augmentation"]) if "augmentation" in raw else AugmentationConfig(),
-        inference=InferenceConfig(**raw["inference"]) if "inference" in raw else InferenceConfig(),
-        service=ServiceConfig(**raw["service"]) if "service" in raw else ServiceConfig(),
-        log_level=raw.get("log_level", "INFO"),
-    )
+    root_config = load_root_config(config_path)
+    return root_config.voice_checker or VoiceCheckerConfig()
 
 
 def _cmd_train(args: argparse.Namespace) -> None:
@@ -226,7 +216,7 @@ def _cmd_train(args: argparse.Namespace) -> None:
 
     _setup_logger(
         "voice_checker",
-        level="DEBUG" if args.verbose else config.log_level,
+        level="DEBUG" if args.verbose else "INFO",
         log_dir=_LOG_DIR,
     )
 
@@ -246,7 +236,7 @@ def _cmd_predict(args: argparse.Namespace) -> None:
 
     _setup_logger(
         "voice_checker",
-        level="DEBUG" if args.verbose else config.log_level,
+        level="DEBUG" if args.verbose else "INFO",
     )
 
     model_path = args.model or str(_MODELS_DIR / config.inference.model_path)

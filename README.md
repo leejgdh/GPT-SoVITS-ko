@@ -40,9 +40,6 @@ cd GPT-SoVITS-ko
 
 # 전체 의존성 설치 (서버 + 파이프라인 + Voice Checker)
 uv sync
-
-# 서버 + 추론만 (파이프라인/학습 의존성 제외, 경량 설치)
-uv sync --only-group serve
 ```
 
 **설정 파일 생성:**

@@ -89,10 +89,11 @@ def _parse_args() -> argparse.Namespace:
 
 def _load_voice_checker(model_path: str):
     """voice-checker CNN 모델을 로드한다. 실패 시 None 반환."""
-    voice_checker_root = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "tools", "voice-checker"),
-    )
-    sys.path.insert(0, voice_checker_root)
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    vc_root = os.path.join(project_root, "tools", "voice-checker")
+
+    if vc_root not in sys.path:
+        sys.path.insert(0, vc_root)
     try:
         from src.config.config import Config
         from src.inference.predictor import VoiceQualityPredictor
@@ -102,8 +103,6 @@ def _load_voice_checker(model_path: str):
     except Exception as e:
         logger.warning("voice-checker 모델 로드 실패: {}", e)
         return None
-    finally:
-        sys.path.remove(voice_checker_root)
 
 
 def main() -> None:

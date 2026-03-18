@@ -21,28 +21,47 @@ class ServiceConfig:
 
 
 @dataclass
+class VCAudioConfig:
+    sample_rate: int = 44100
+    n_mels: int = 64
+    n_fft: int = 1024
+    hop_length: int = 512
+    target_length: int = 128
+
+
+@dataclass
+class VCTrainingConfig:
+    batch_size: int = 16
+    epochs: int = 50
+    learning_rate: float = 0.001
+    weight_decay: float = 0.0001
+    val_ratio: float = 0.2
+    early_stop_patience: int = 10
+    seed: int = 42
+
+
+@dataclass
+class VCAugmentationConfig:
+    enabled: bool = True
+    time_mask_param: int = 10
+    freq_mask_param: int = 5
+    noise_std: float = 0.005
+    minority_oversample: int = 5
+
+
+@dataclass
+class VCInferenceConfig:
+    model_path: str = "data/voice-checker/models/best_model.pth"
+    threshold: float = 0.5
+
+
+@dataclass
 class VoiceCheckerConfig:
     """Voice Checker 설정. conf.yaml에 voice_checker 섹션이 있으면 활성화."""
-    audio: dict = field(default_factory=lambda: {
-        "sample_rate": 44100, "n_mels": 64, "n_fft": 1024,
-        "hop_length": 512, "target_length": 128,
-    })
-    training: dict = field(default_factory=lambda: {
-        "batch_size": 16, "epochs": 50, "learning_rate": 0.001,
-        "weight_decay": 0.0001, "val_ratio": 0.2,
-        "early_stop_patience": 10, "seed": 42,
-    })
-    augmentation: dict = field(default_factory=lambda: {
-        "enabled": True, "time_mask_param": 10, "freq_mask_param": 5,
-        "noise_std": 0.005, "minority_oversample": 5,
-    })
-    inference: dict = field(default_factory=lambda: {
-        "model_path": "data/voice-checker/models/best_model.pth",
-        "threshold": 0.5,
-    })
-    service: dict = field(default_factory=lambda: {
-        "host": "0.0.0.0", "port": 9890,
-    })
+    audio: VCAudioConfig = field(default_factory=VCAudioConfig)
+    training: VCTrainingConfig = field(default_factory=VCTrainingConfig)
+    augmentation: VCAugmentationConfig = field(default_factory=VCAugmentationConfig)
+    inference: VCInferenceConfig = field(default_factory=VCInferenceConfig)
 
 
 @dataclass
@@ -96,13 +115,11 @@ def load_config(path: Path) -> Config:
     vc_data = data.get("voice_checker")
     vc_config = None
     if vc_data is not None:
-        defaults = VoiceCheckerConfig()
         vc_config = VoiceCheckerConfig(
-            audio=vc_data.get("audio", defaults.audio),
-            training=vc_data.get("training", defaults.training),
-            augmentation=vc_data.get("augmentation", defaults.augmentation),
-            inference=vc_data.get("inference", defaults.inference),
-            service=vc_data.get("service", defaults.service),
+            audio=VCAudioConfig(**vc_data["audio"]) if "audio" in vc_data else VCAudioConfig(),
+            training=VCTrainingConfig(**vc_data["training"]) if "training" in vc_data else VCTrainingConfig(),
+            augmentation=VCAugmentationConfig(**vc_data["augmentation"]) if "augmentation" in vc_data else VCAugmentationConfig(),
+            inference=VCInferenceConfig(**vc_data["inference"]) if "inference" in vc_data else VCInferenceConfig(),
         )
 
     return Config(
