@@ -3,6 +3,10 @@
 서브커맨드:
   serve     — REST API 서버 실행
   pipeline  — 전체 파이프라인 (Step 1~4) 일괄 실행
+  step1     — 데이터 준비 (denoise → slice → UVR5 → ASR)
+  step2     — 전처리 (text → hubert → semantic)
+  step3     — 학습 (GPT AR + SoVITS)
+  step4     — 추론 + voice.yaml 자동 생성
 """
 from __future__ import annotations
 
@@ -226,6 +230,138 @@ def _clean_step_dir(voice_dir: str, step: str, version: str, label: str) -> None
         shutil.rmtree(step_dir)
 
 
+def _run_step1(voice_dir: str) -> None:
+    """Step 1: 데이터 준비 (denoise → slice → UVR5 → ASR)."""
+    py = sys.executable
+    _run([py, "scripts/data_preparation/denoise.py", "--voice-dir", voice_dir],
+         "Step1-1 denoise")
+    _run([py, "scripts/data_preparation/slice_audio.py", "--voice-dir", voice_dir],
+         "Step1-2 slice_audio")
+    _run([py, "scripts/data_preparation/uvr5_separate.py", "--voice-dir", voice_dir],
+         "Step1-3 uvr5_separate")
+    _run([py, "scripts/data_preparation/asr_whisper.py", "--voice-dir", voice_dir],
+         "Step1-4 asr_whisper")
+
+
+def _run_step2(voice_dir: str, version: str) -> None:
+    """Step 2: 전처리 (text → hubert → sv → semantic)."""
+    py = sys.executable
+    _clean_step_dir(voice_dir, "step2", version, "전처리")
+    _run([py, "scripts/preprocessing/1-get-text.py",
+          "--voice-dir", voice_dir, "--version", version],
+         "Step2-1 get-text")
+    _run([py, "scripts/preprocessing/2-get-hubert-wav32k.py",
+          "--voice-dir", voice_dir, "--version", version],
+         "Step2-2 get-hubert-wav32k")
+    if version in _SV_VERSIONS:
+        _run([py, "scripts/preprocessing/2-get-sv.py",
+              "--voice-dir", voice_dir, "--version", version],
+             "Step2-SV get-sv")
+    _run([py, "scripts/preprocessing/3-get-semantic.py",
+          "--voice-dir", voice_dir, "--version", version],
+         "Step2-3 get-semantic")
+
+
+def _run_step3(
+    voice_dir: str, version: str,
+    epochs: int | None = None, batch_size: int | None = None,
+) -> None:
+    """Step 3: 학습 (GPT AR + SoVITS)."""
+    py = sys.executable
+    _clean_step_dir(voice_dir, "step3", version, "학습")
+
+    gpt_cmd = [py, "scripts/training/s1_train.py",
+               "--voice-dir", voice_dir, "--version", version]
+    if epochs is not None:
+        gpt_cmd += ["--epochs", str(epochs)]
+    if batch_size is not None:
+        gpt_cmd += ["--batch-size", str(batch_size)]
+    _run(gpt_cmd, "Step3-1 GPT train")
+
+    sovits_script = _SOVITS_TRAIN_SCRIPT[version]
+    sovits_cmd = [py, sovits_script,
+                  "--voice-dir", voice_dir, "--version", version]
+    if epochs is not None:
+        sovits_cmd += ["--epochs", str(epochs)]
+    if batch_size is not None:
+        sovits_cmd += ["--batch-size", str(batch_size)]
+    _run(sovits_cmd, "Step3-2 SoVITS train")
+
+
+def _run_step4(
+    voice_dir: str, version: str, output_text: str,
+    ref_audio: str | None = None, ref_text: str | None = None,
+    ref_lang: str = "ko",
+) -> None:
+    """Step 4: 추론 + voice.yaml 자동 생성."""
+    py = sys.executable
+    _clean_step_dir(voice_dir, "step4", version, "추론")
+
+    ref_audio = ref_audio or _find_ref_audio(voice_dir)
+    if ref_audio is None:
+        logger.error("참조 오디오를 찾을 수 없습니다. --ref-audio를 지정하세요.")
+        sys.exit(1)
+
+    ref_text = ref_text or _find_ref_text(voice_dir, ref_audio)
+    if ref_text is None:
+        logger.error("참조 텍스트를 찾을 수 없습니다. --ref-text를 지정하세요.")
+        sys.exit(1)
+
+    _run([py, "scripts/inference/inference_cli.py",
+          "--voice-dir", voice_dir, "--version", version,
+          "--ref-audio", ref_audio,
+          "--ref-text", ref_text,
+          "--text", output_text],
+         "Step4 inference")
+
+    _save_voice_yaml(voice_dir, version, ref_audio, ref_text, ref_lang)
+
+
+# ---------------------------------------------------------------------------
+# step 개별 커맨드
+# ---------------------------------------------------------------------------
+
+
+def _cmd_step1(args: argparse.Namespace) -> None:
+    _setup_logger("step1", level="DEBUG" if args.verbose else "INFO")
+    logger.info("=== Step 1 시작: {} ===", args.voice_dir)
+    t0 = time.time()
+    _run_step1(args.voice_dir)
+    logger.info("=== Step 1 완료 ({:.0f}초) ===", time.time() - t0)
+
+
+def _cmd_step2(args: argparse.Namespace) -> None:
+    _setup_logger("step2", level="DEBUG" if args.verbose else "INFO")
+    logger.info("=== Step 2 시작: {} (version={}) ===", args.voice_dir, args.version)
+    t0 = time.time()
+    _run_step2(args.voice_dir, args.version)
+    logger.info("=== Step 2 완료 ({:.0f}초) ===", time.time() - t0)
+
+
+def _cmd_step3(args: argparse.Namespace) -> None:
+    _setup_logger("step3", level="DEBUG" if args.verbose else "INFO")
+    logger.info("=== Step 3 시작: {} (version={}) ===", args.voice_dir, args.version)
+    t0 = time.time()
+    _run_step3(args.voice_dir, args.version, args.epochs, args.batch_size)
+    logger.info("=== Step 3 완료 ({:.0f}초) ===", time.time() - t0)
+
+
+def _cmd_step4(args: argparse.Namespace) -> None:
+    _setup_logger("step4", level="DEBUG" if args.verbose else "INFO")
+    logger.info("=== Step 4 시작: {} (version={}) ===", args.voice_dir, args.version)
+    t0 = time.time()
+    _run_step4(
+        args.voice_dir, args.version, args.output_text,
+        args.ref_audio, args.ref_text, args.ref_lang,
+    )
+    logger.info("=== Step 4 완료 ({:.0f}초) ===", time.time() - t0)
+
+
+# ---------------------------------------------------------------------------
+# pipeline 커맨드
+# ---------------------------------------------------------------------------
+
+
 def _cmd_pipeline(args: argparse.Namespace) -> None:
     """전체 파이프라인 (Step 1~4)을 순서대로 실행한다."""
     _setup_logger("pipeline", level="DEBUG" if args.verbose else "INFO")
@@ -233,84 +369,21 @@ def _cmd_pipeline(args: argparse.Namespace) -> None:
     voice_dir = args.voice_dir
     version = args.version
     skip = set(args.skip or [])
-    py = sys.executable
 
     total_start = time.time()
     logger.info("=== 파이프라인 시작: {} (version={}) ===", voice_dir, version)
 
-    # -- Step 1: 데이터 준비 --
     if "step1" not in skip:
-        _run([py, "scripts/data_preparation/denoise.py", "--voice-dir", voice_dir],
-             "Step1-1 denoise")
-        _run([py, "scripts/data_preparation/slice_audio.py", "--voice-dir", voice_dir],
-             "Step1-2 slice_audio")
-        _run(
-            [py, "scripts/data_preparation/uvr5_separate.py",
-             "--voice-dir", voice_dir],
-            "Step1-3 uvr5_separate",
-        )
-        _run([py, "scripts/data_preparation/asr_whisper.py", "--voice-dir", voice_dir],
-             "Step1-4 asr_whisper")
-
-    # -- Step 2: 전처리 --
+        _run_step1(voice_dir)
     if "step2" not in skip:
-        _clean_step_dir(voice_dir, "step2", version, "전처리")
-        _run([py, "scripts/preprocessing/1-get-text.py",
-              "--voice-dir", voice_dir, "--version", version],
-             "Step2-1 get-text")
-        _run([py, "scripts/preprocessing/2-get-hubert-wav32k.py",
-              "--voice-dir", voice_dir, "--version", version],
-             "Step2-2 get-hubert-wav32k")
-        if version in _SV_VERSIONS:
-            _run([py, "scripts/preprocessing/2-get-sv.py",
-                  "--voice-dir", voice_dir, "--version", version],
-                 "Step2-SV get-sv")
-        _run([py, "scripts/preprocessing/3-get-semantic.py",
-              "--voice-dir", voice_dir, "--version", version],
-             "Step2-3 get-semantic")
-
-    # -- Step 3: 학습 --
+        _run_step2(voice_dir, version)
     if "step3" not in skip:
-        _clean_step_dir(voice_dir, "step3", version, "학습")
-        gpt_cmd = [py, "scripts/training/s1_train.py",
-                   "--voice-dir", voice_dir, "--version", version]
-        if args.epochs is not None:
-            gpt_cmd += ["--epochs", str(args.epochs)]
-        if args.batch_size is not None:
-            gpt_cmd += ["--batch-size", str(args.batch_size)]
-        _run(gpt_cmd, "Step3-1 GPT train")
-
-        sovits_script = _SOVITS_TRAIN_SCRIPT[version]
-        sovits_cmd = [py, sovits_script,
-                      "--voice-dir", voice_dir, "--version", version]
-        if args.epochs is not None:
-            sovits_cmd += ["--epochs", str(args.epochs)]
-        if args.batch_size is not None:
-            sovits_cmd += ["--batch-size", str(args.batch_size)]
-        _run(sovits_cmd, "Step3-2 SoVITS train")
-
-    # -- Step 4: 추론 --
+        _run_step3(voice_dir, version, args.epochs, args.batch_size)
     if "step4" not in skip:
-        _clean_step_dir(voice_dir, "step4", version, "추론")
-        ref_audio = args.ref_audio or _find_ref_audio(voice_dir)
-        if ref_audio is None:
-            logger.error("참조 오디오를 찾을 수 없습니다. --ref-audio를 지정하세요.")
-            sys.exit(1)
-
-        ref_text = args.ref_text or _find_ref_text(voice_dir, ref_audio)
-        if ref_text is None:
-            logger.error("참조 텍스트를 찾을 수 없습니다. --ref-text를 지정하세요.")
-            sys.exit(1)
-
-        _run([py, "scripts/inference/inference_cli.py",
-              "--voice-dir", voice_dir, "--version", version,
-              "--ref-audio", ref_audio,
-              "--ref-text", ref_text,
-              "--text", args.output_text],
-             "Step4 inference")
-
-        # voice.yaml 자동 생성
-        _save_voice_yaml(voice_dir, version, ref_audio, ref_text, args.ref_lang)
+        _run_step4(
+            voice_dir, version, args.output_text,
+            args.ref_audio, args.ref_text, args.ref_lang,
+        )
 
     total_elapsed = time.time() - total_start
     logger.info("=== 파이프라인 완료 ({:.0f}초) ===", total_elapsed)
@@ -395,17 +468,58 @@ def _build_parser() -> argparse.ArgumentParser:
         help="건너뛸 스텝 (예: --skip step1 step2)",
     )
 
+    # --- step1 ---
+    sp_s1 = sub.add_parser("step1", help="데이터 준비 (denoise → slice → UVR5 → ASR)")
+    sp_s1.add_argument("-v", "--verbose", action="store_true")
+    sp_s1.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")
+
+    # --- step2 ---
+    sp_s2 = sub.add_parser("step2", help="전처리 (text → hubert → semantic)")
+    sp_s2.add_argument("-v", "--verbose", action="store_true")
+    sp_s2.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")
+    sp_s2.add_argument("--version", default="v2Pro",
+                        choices=["v2", "v3", "v4", "v2Pro", "v2ProPlus"])
+
+    # --- step3 ---
+    sp_s3 = sub.add_parser("step3", help="학습 (GPT AR + SoVITS)")
+    sp_s3.add_argument("-v", "--verbose", action="store_true")
+    sp_s3.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")
+    sp_s3.add_argument("--version", default="v2Pro",
+                        choices=["v2", "v3", "v4", "v2Pro", "v2ProPlus"])
+    sp_s3.add_argument("--epochs", type=int, default=None)
+    sp_s3.add_argument("--batch-size", type=int, default=None)
+
+    # --- step4 ---
+    sp_s4 = sub.add_parser("step4", help="추론 + voice.yaml 자동 생성")
+    sp_s4.add_argument("-v", "--verbose", action="store_true")
+    sp_s4.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")
+    sp_s4.add_argument("--version", default="v2Pro",
+                        choices=["v2", "v3", "v4", "v2Pro", "v2ProPlus"])
+    sp_s4.add_argument("--output-text", required=True, help="합성할 텍스트")
+    sp_s4.add_argument("--ref-audio", default=None)
+    sp_s4.add_argument("--ref-text", default=None)
+    sp_s4.add_argument("--ref-lang", default="ko", choices=["ko", "en", "ja"])
+
     return parser
+
+
+_CMD_MAP = {
+    "serve": _cmd_serve,
+    "pipeline": _cmd_pipeline,
+    "step1": _cmd_step1,
+    "step2": _cmd_step2,
+    "step3": _cmd_step3,
+    "step4": _cmd_step4,
+}
 
 
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
-    if args.command == "serve":
-        _cmd_serve(args)
-    elif args.command == "pipeline":
-        _cmd_pipeline(args)
+    handler = _CMD_MAP.get(args.command)
+    if handler:
+        handler(args)
     else:
         parser.print_help()
         sys.exit(1)

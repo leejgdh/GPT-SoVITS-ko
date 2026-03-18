@@ -118,27 +118,22 @@ curl -X POST http://localhost:9880/tts \
 
 ### 개별 스텝 실행
 
+각 step을 독립적으로 실행할 수 있습니다.
+
 ```bash
-# Step 1: 데이터 준비
-uv run python scripts/data_preparation/denoise.py --voice-dir data/voice/dahwi
-uv run python scripts/data_preparation/slice_audio.py --voice-dir data/voice/dahwi
-uv run python scripts/data_preparation/uvr5_separate.py --voice-dir data/voice/dahwi
-uv run python scripts/data_preparation/asr_whisper.py --voice-dir data/voice/dahwi
+# Step 1: 데이터 준비 (denoise → slice → UVR5 → ASR)
+uv run python main.py step1 --voice-dir data/voice/dahwi
 
-# Step 2: 전처리
-uv run python scripts/preprocessing/1-get-text.py --voice-dir data/voice/dahwi
-uv run python scripts/preprocessing/2-get-hubert-wav32k.py --voice-dir data/voice/dahwi
-uv run python scripts/preprocessing/3-get-semantic.py --voice-dir data/voice/dahwi
+# Step 2: 전처리 (text → hubert → semantic)
+uv run python main.py step2 --voice-dir data/voice/dahwi --version v2Pro
 
-# Step 3: 학습
-uv run python scripts/training/s1_train.py --voice-dir data/voice/dahwi --version v2Pro
-uv run python scripts/training/s2_train_vits.py --voice-dir data/voice/dahwi --version v2Pro
+# Step 3: 학습 (GPT AR + SoVITS)
+uv run python main.py step3 --voice-dir data/voice/dahwi --version v2Pro
+uv run python main.py step3 --voice-dir data/voice/dahwi --version v2Pro --epochs 20
 
-# Step 4: 추론
-uv run python scripts/inference/inference_cli.py \
-  --voice-dir data/voice/dahwi --version v2Pro \
-  --ref-audio data/voice/dahwi/step1/03_vocal/sample.flac \
-  --ref-text "참조 텍스트" --text "합성할 텍스트"
+# Step 4: 추론 + voice.yaml 생성
+uv run python main.py step4 --voice-dir data/voice/dahwi --version v2Pro \
+  --output-text "합성할 텍스트"
 ```
 
 ---
