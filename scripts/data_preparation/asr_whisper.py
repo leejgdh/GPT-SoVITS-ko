@@ -96,7 +96,7 @@ def _load_voice_checker(model_path: str):
         sys.path.insert(0, vc_root)
     try:
         from src.config.config import VoiceCheckerConfig
-        from vc.inference.predictor import VoiceQualityPredictor
+        from vc.predictor import VoiceQualityPredictor
 
         predictor = VoiceQualityPredictor(model_path, VoiceCheckerConfig())
         return predictor

@@ -7,8 +7,8 @@ from loguru import logger
 
 from src.config.config import VCAudioConfig as AudioConfig
 from src.config.config import VoiceCheckerConfig as Config
-from vc.data.transforms import MelSpectrogramTransform
-from vc.model.cnn import AudioQualityCNN
+from vc.transforms import MelSpectrogramTransform
+from vc.model import AudioQualityCNN
 
 
 class VoiceQualityPredictor:

@@ -204,7 +204,7 @@ def _load_vc_config(config_path: Path):
 
 def _cmd_train(args: argparse.Namespace) -> None:
     """quality_labels.json 기반으로 CNN 모델을 학습한다."""
-    from vc.training.trainer import run_training
+    from vc.trainer import run_training
 
     config = _load_vc_config(Path(args.config))
 
@@ -232,7 +232,7 @@ def _cmd_train(args: argparse.Namespace) -> None:
 
 def _cmd_predict(args: argparse.Namespace) -> None:
     """학습된 모델로 오디오 품질을 예측한다."""
-    from vc.inference.predictor import VoiceQualityPredictor
+    from vc.predictor import VoiceQualityPredictor
 
     config = _load_vc_config(Path(args.config))
 

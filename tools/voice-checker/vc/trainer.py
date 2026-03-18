@@ -11,9 +11,9 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Subset
 
 from src.config.config import VoiceCheckerConfig as Config
-from vc.data.dataset import AudioQualityDataset
-from vc.data.transforms import AudioAugmentation, MelSpectrogramTransform
-from vc.model.cnn import AudioQualityCNN
+from vc.dataset import AudioQualityDataset
+from vc.transforms import AudioAugmentation, MelSpectrogramTransform
+from vc.model import AudioQualityCNN
 
 
 def _detect_device() -> torch.device:
