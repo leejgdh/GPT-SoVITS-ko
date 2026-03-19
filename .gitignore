@@ -10,8 +10,6 @@ uv.lock
 
 # 대용량 모델/데이터
 GPT_SoVITS/pretrained_models/
-!GPT_SoVITS/pretrained_models/fast_langdetect/
-!GPT_SoVITS/pretrained_models/fast_langdetect/.gitkeep
 GPT_SoVITS/text/G2PWModel/g2pW.onnx
 GPT_SoVITS/text/G2PWModel_1.1.zip
 GPT_SoVITS/text/engdict_cache.pickle

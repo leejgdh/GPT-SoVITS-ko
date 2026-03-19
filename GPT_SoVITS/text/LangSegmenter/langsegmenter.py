@@ -8,7 +8,9 @@ jieba.setLogLevel(logging.CRITICAL)
 # fast_langdetect 모델 위치 변경
 from pathlib import Path
 import fast_langdetect
-fast_langdetect.infer._default_detector = fast_langdetect.infer.LangDetector(fast_langdetect.infer.LangDetectConfig(cache_dir=Path(__file__).parent.parent.parent / "pretrained_models" / "fast_langdetect"))
+_fast_langdetect_cache = Path(__file__).parent.parent.parent / "pretrained_models" / "fast_langdetect"
+_fast_langdetect_cache.mkdir(parents=True, exist_ok=True)
+fast_langdetect.infer._default_detector = fast_langdetect.infer.LangDetector(fast_langdetect.infer.LangDetectConfig(cache_dir=_fast_langdetect_cache))
 
 
 from split_lang import LangSplitter
