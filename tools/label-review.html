@@ -569,7 +569,7 @@ function renderLabels() {
   body.innerHTML = filtered.map(l => `
     <tr data-idx="${l.index}" data-state="${l.state}">
       <td class="idx">${l.index}</td>
-      <td>
+      <td style="display:flex;gap:4px;align-items:center">
         <button class="play-btn ${playingIndex === l.index ? 'playing' : ''}"
                 onclick="togglePlay(${l.index})" title="재생">
           ${playingIndex === l.index ? '■' : '▶'}
