@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from loguru import logger
 from pydantic import BaseModel
@@ -187,4 +188,70 @@ async def delete_emotion(request: Request, name: str, emotion: str):
         "message": "감정 삭제 완료",
         "emotion": emotion,
         "remaining": profile.emotion_names,
+    })
+
+
+@router.post("/voices/{name}/emotions/{emotion}/upload")
+async def upload_emotion_ref(
+    request: Request,
+    name: str,
+    emotion: str,
+    ref_text: str = Form(""),
+    file: UploadFile = File(...),
+):
+    """외부 음성 파일을 업로드하여 감정 레퍼런스로 매핑한다."""
+    ctx = _get_context(request)
+    profile = ctx.get_voice_profile(name)
+    if profile is None:
+        return JSONResponse(
+            status_code=404,
+            content={"message": f"voice '{name}' not found"},
+        )
+
+    # 파일 저장: data/voice/{name}/ref_emotions/{emotion}_{filename}
+    voice_dir = os.path.join(ctx.config.voices_dir, name)
+    ref_dir = os.path.join(voice_dir, "ref_emotions")
+    os.makedirs(ref_dir, exist_ok=True)
+
+    safe_name = f"{emotion}_{file.filename}"
+    dest = os.path.join(ref_dir, safe_name)
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    # 프로필에 감정 매핑
+    profile.emotions[emotion] = EmotionRef(
+        ref_audio=dest,
+        ref_text=ref_text,
+    )
+
+    # voice.yaml 저장
+    emotions_data = {
+        emo_name: {
+            "ref_audio": os.path.relpath(emo.ref_audio, voice_dir),
+            "ref_text": emo.ref_text,
+        }
+        for emo_name, emo in profile.emotions.items()
+    }
+    save_voice_yaml(
+        voice_dir,
+        name=profile.name,
+        version=profile.version,
+        ref_audio=profile.ref_audio,
+        ref_text=profile.ref_text,
+        ref_lang=profile.ref_lang,
+        gpt_weights=profile.gpt_weights,
+        sovits_weights=profile.sovits_weights,
+        emotions=emotions_data,
+    )
+
+    logger.info(
+        "감정 레퍼런스 업로드: voice={}, emotion={}, file={}",
+        name, emotion, safe_name,
+    )
+
+    return JSONResponse(content={
+        "message": "업로드 완료",
+        "emotion": emotion,
+        "ref_audio": safe_name,
+        "ref_text": ref_text,
     })
