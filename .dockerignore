@@ -1,0 +1,23 @@
+# 대용량 모델/데이터 — 볼륨 마운트 사용
+GPT_SoVITS/pretrained_models/
+data/
+logs/
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# 로컬 설정
+conf.yaml
+uv.lock
+
+# Git / IDE
+.git/
+.gitignore
+*.md
+
+# 시각화 임시 파일
+*.png
