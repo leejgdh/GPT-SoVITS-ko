@@ -12,7 +12,6 @@ __pycache__/
 
 # 로컬 설정
 conf.yaml
-uv.lock
 
 # Git / IDE
 .git/
