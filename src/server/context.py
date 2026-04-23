@@ -116,6 +116,8 @@ class ServiceContext:
 
     def switch_voice(self, name: str) -> None:
         """voice를 전환한다. 가중치를 로드하고 현재 voice를 업데이트."""
+        from src.metrics import active_voice, voice_switch_total
+
         if name not in self._voices:
             msg = f"voice '{name}' 이(가) 등록되어 있지 않습니다"
             raise KeyError(msg)
@@ -133,6 +135,12 @@ class ServiceContext:
         # GPT + SoVITS 가중치 로드 (voice별로 각각 학습된 모델)
         self._tts_pipeline.init_t2s_weights(profile.gpt_weights)
         self._tts_pipeline.init_vits_weights(profile.sovits_weights)
+
+        # 메트릭: 이전 voice 를 0 으로 내리고 새 voice 를 1 로.
+        if self._current_voice:
+            active_voice.labels(voice=self._current_voice).set(0)
+        active_voice.labels(voice=name).set(1)
+        voice_switch_total.labels(voice=name).inc()
 
         self._current_voice = name
         logger.info("voice '{}' 로드 완료", name)

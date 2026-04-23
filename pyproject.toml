@@ -64,6 +64,7 @@ dependencies = [
     "tensorboard",
     "onnxruntime-gpu; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "matplotlib>=3.10.8",
+    "prometheus-client>=0.20",
 ]
 
 [build-system]

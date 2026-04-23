@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import threading
+import time
 import wave
 from io import BytesIO
 from typing import Union
@@ -15,6 +16,11 @@ from loguru import logger
 from pydantic import BaseModel
 
 from GPT_SoVITS.TTS_infer_pack.text_segmentation_method import get_method_names
+from src.metrics import (
+    synthesis_bytes,
+    synthesis_chars,
+    synthesis_duration_seconds,
+)
 from src.server.context import ServiceContext
 
 router = APIRouter()
@@ -301,8 +307,16 @@ async def tts_post(request: Request, body: TTSRequest):
     req["fixed_length_chunk"] = fixed_length_chunk
     is_streaming = streaming_mode or return_fragment
 
+    synthesis_chars.labels(voice=body.voice).observe(len(body.text or ""))
+
+    t0 = time.monotonic()
     try:
         if is_streaming:
+            # 스트리밍은 response 반환 이후 실제 inference 진행 → 여기선 "setup" 까지만
+            # 관측한다. 전체 time-to-last-byte 는 현재 계측 대상 아님.
+            synthesis_duration_seconds.labels(
+                voice=body.voice, result="ok"
+            ).observe(time.monotonic() - t0)
             return StreamingResponse(
                 _synthesize_stream(ctx, body.voice, req, media_type, volume),
                 media_type=f"audio/{media_type}",
@@ -318,9 +332,15 @@ async def tts_post(request: Request, body: TTSRequest):
 
             audio_bytes = await asyncio.to_thread(_synthesize)
 
+        elapsed = time.monotonic() - t0
+        synthesis_duration_seconds.labels(voice=body.voice, result="ok").observe(elapsed)
+        synthesis_bytes.labels(voice=body.voice).observe(len(audio_bytes))
         return Response(audio_bytes, media_type=f"audio/{media_type}")
 
     except Exception as e:
+        synthesis_duration_seconds.labels(
+            voice=body.voice, result="error"
+        ).observe(time.monotonic() - t0)
         logger.exception("TTS 합성 실패")
         return JSONResponse(
             status_code=400,
