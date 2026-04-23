@@ -119,8 +119,9 @@ class ServiceContext:
         from src.metrics import active_voice, voice_switch_total
 
         if name not in self._voices:
+            from src.exceptions import VoiceNotFoundError
             msg = f"voice '{name}' 이(가) 등록되어 있지 않습니다"
-            raise KeyError(msg)
+            raise VoiceNotFoundError(msg)
 
         if name == self._current_voice:
             logger.debug("이미 '{}' voice가 로드되어 있습니다", name)
