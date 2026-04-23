@@ -3,6 +3,11 @@
 # GPU 추론을 수행하므로 CUDA 런타임 베이스 이미지를 사용한다.
 # CUDA 버전은 compose의 build-arg로 주입 → 호스트 드라이버에 맞춰 조정 가능.
 # 모델/음성 데이터/설정/로그는 모두 compose의 bind mount로만 제공한다 (이미지는 stateless).
+#
+# 의존성 관리: pyproject.toml 을 single source of truth 로 사용.
+# - `uv pip install .` 로 프로젝트 자기 자신 + 모든 외부 의존성 설치
+# - `[tool.uv.index]` / `[tool.uv.sources]` 가 그대로 적용되어 pytorch-cu126 채널로 토치 수급
+# - Dockerfile 에 별도 하드코드된 패키지 목록 없음 — 의존성 추가는 pyproject.toml 만 수정
 
 ARG CUDA_VERSION=12.6.3
 ARG CUDNN_VARIANT=cudnn
@@ -27,12 +32,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# 의존성 설치 — pyproject.toml + uv.lock 단일 소스. Python 경로를 명시하여 uv가 임의 Python을
-# 다운로드하지 않도록 한다(비-root 실행 시 /root/.local 접근 불가 문제 회피).
-COPY pyproject.toml uv.lock ./
-RUN uv venv --python /usr/bin/python3.12 \
-    && uv sync --frozen --no-dev --no-install-project \
-    && rm -rf /root/.cache
+# 서비스 소스 (uv pip install . 가 wheel 빌드하려면 src 가 있어야 한다).
+# pyproject.toml 의 dependencies 가 외부 패키지 단일 source of truth.
+COPY pyproject.toml ./
+COPY main.py _setup_paths.py conf.example.yaml ./
+COPY src/     src/
+COPY scripts/ scripts/
+COPY tools/   tools/
 
 # 벤더 코드 (GPT_SoVITS) — pretrained_models 는 볼륨으로 주입되므로 제외
 COPY GPT_SoVITS/AR                GPT_SoVITS/AR/
@@ -46,11 +52,11 @@ COPY GPT_SoVITS/module            GPT_SoVITS/module/
 COPY GPT_SoVITS/text              GPT_SoVITS/text/
 COPY GPT_SoVITS/*.py              GPT_SoVITS/
 
-# 프로젝트 소스 — conf.yaml 은 compose에서 bind mount 하므로 이미지에 넣지 않는다(예시 파일만 포함)
-COPY main.py _setup_paths.py conf.example.yaml ./
-COPY src/     src/
-COPY scripts/ scripts/
-COPY tools/   tools/
+# 의존성 + 프로젝트 자체 설치. Python 경로를 명시하여 uv 가 임의 Python 을
+# 다운로드하지 않도록 한다 (비-root 실행 시 /root/.local 접근 불가 문제 회피).
+RUN uv venv --python /usr/bin/python3.12 \
+    && uv pip install --python /app/.venv/bin/python . \
+    && rm -rf /root/.cache
 
 # 런타임 사용자 — compose build-arg로 호스트 UID/GID를 주입받아 bind mount 파일 소유권과 일치시킨다.
 # ubuntu 24.04 base 이미지는 기본 `ubuntu:ubuntu`(1000:1000) 사용자를 포함하므로 먼저 제거한다.
