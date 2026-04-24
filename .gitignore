@@ -5,6 +5,11 @@ __pycache__/
 # 로컬 설정 (conf.example.yaml을 복사하여 사용)
 conf.yaml
 
+# 환경변수 (시크릿 포함 가능)
+.env
+.env.*
+!.env.example
+
 # uv
 uv.lock
 
