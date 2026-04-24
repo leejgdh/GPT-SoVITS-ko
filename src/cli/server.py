@@ -11,7 +11,7 @@ from loguru import logger
 _server_thread: threading.Thread | None = None
 
 
-def start_server_background(config_path: str = "conf.yaml") -> None:
+def start_server_background(config_path: str = "config.yaml") -> None:
     """서버를 백그라운드 스레드로 시작한다. 이미 실행 중이면 무시."""
     global _server_thread
     if _server_thread is not None and _server_thread.is_alive():

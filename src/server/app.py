@@ -67,7 +67,7 @@ class _MetricsMiddleware(BaseHTTPMiddleware):
 
 def create_app() -> FastAPI:
     """FastAPI 앱을 생성한다. uvicorn factory 모드에서 호출."""
-    config_path = Path(os.environ.get("TTS_SERVICE_CONFIG", "conf.yaml"))
+    config_path = Path(os.environ.get("TTS_SERVICE_CONFIG", "config.yaml"))
     config = load_config(config_path) if config_path.exists() else Config()
 
     @asynccontextmanager

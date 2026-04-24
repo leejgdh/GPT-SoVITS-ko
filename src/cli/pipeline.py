@@ -155,7 +155,7 @@ def run_asr(voice_dir: str) -> None:
           "--voice-dir", voice_dir], "asr")
 
 
-def run_classify(voice_dir: str, config_path: str = "conf.yaml") -> None:
+def run_classify(voice_dir: str, config_path: str = "config.yaml") -> None:
     """vocal.list의 pending 상태를 Voice Checker CNN으로 재분류한다."""
     from src.config.config import VoiceCheckerConfig, load_config
 
@@ -270,7 +270,7 @@ def run_train_sovits(
 # ---------------------------------------------------------------------------
 
 
-def run_step1(voice_dir: str, config_path: str = "conf.yaml") -> None:
+def run_step1(voice_dir: str, config_path: str = "config.yaml") -> None:
     _ensure_voice_yaml(voice_dir)
     run_denoise(voice_dir)
     run_slice(voice_dir)

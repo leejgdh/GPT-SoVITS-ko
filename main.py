@@ -26,6 +26,14 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# 호스트 실행 시 이 프로젝트 루트의 .env.local (gitignored) 을 dotenv 로 로드한다.
+# 현재는 참조하는 env 키가 없어도 구조 통일 차원에서 슬롯 유지.
+_PROJECT_ROOT = Path(__file__).resolve().parent
+load_dotenv(_PROJECT_ROOT / ".env.local", override=True)
 
 from src.cli.parser import build_parser
 from src.cli.pipeline import (
@@ -87,14 +95,14 @@ def main() -> None:
 
     if not args.command:
         args.command = "serve"
-        for attr, default in [("verbose", False), ("config", "conf.yaml"), ("host", None), ("port", None)]:
+        for attr, default in [("verbose", False), ("config", "config.yaml"), ("host", None), ("port", None)]:
             if not hasattr(args, attr):
                 setattr(args, attr, default)
 
     handler = _CMD_MAP.get(args.command)
 
     if args.command in _SERVER_COMMANDS:
-        config_path = getattr(args, "config", "conf.yaml")
+        config_path = getattr(args, "config", "config.yaml")
         start_server_background(config_path)
 
     handler(args)

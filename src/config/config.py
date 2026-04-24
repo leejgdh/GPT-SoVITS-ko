@@ -57,7 +57,7 @@ class VCInferenceConfig:
 
 @dataclass
 class VoiceCheckerConfig:
-    """Voice Checker 설정. conf.yaml에 voice_checker 섹션이 있으면 활성화."""
+    """Voice Checker 설정. config.yaml에 voice_checker 섹션이 있으면 활성화."""
     audio: VCAudioConfig = field(default_factory=VCAudioConfig)
     training: VCTrainingConfig = field(default_factory=VCTrainingConfig)
     augmentation: VCAugmentationConfig = field(default_factory=VCAugmentationConfig)

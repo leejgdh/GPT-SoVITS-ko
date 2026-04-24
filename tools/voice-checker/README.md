@@ -37,4 +37,4 @@ python main.py predict /path/to/audio/dir -t 0.7    # 임계값 지정
 
 ## 설정
 
-`conf.yaml` 참조. 주요 섹션: `audio`, `training`, `augmentation`, `inference`
+`config.yaml` 참조. 주요 섹션: `audio`, `training`, `augmentation`, `inference`

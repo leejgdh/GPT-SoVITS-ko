@@ -14,7 +14,7 @@ def build_parser() -> argparse.ArgumentParser:
     # 공통 인자 헬퍼
     def _add_common(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("-v", "--verbose", action="store_true", help="Debug logging")
-        sp.add_argument("-c", "--config", default="conf.yaml", help="설정 파일 경로")
+        sp.add_argument("-c", "--config", default="config.yaml", help="설정 파일 경로")
 
     def _add_voice_dir(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")

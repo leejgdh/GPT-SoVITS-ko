@@ -24,7 +24,6 @@
 git clone https://github.com/leejgdh/GPT-SoVITS-ko.git
 cd GPT-SoVITS-ko
 uv sync
-cp conf.example.yaml conf.yaml
 ```
 
 ---

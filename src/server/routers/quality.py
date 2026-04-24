@@ -47,7 +47,7 @@ def _require_vc(request: Request) -> ServiceContext:
     ctx = _get_context(request)
     if ctx.config.voice_checker is None:
         raise HTTPException(
-            503, detail="Voice Checker가 설정되지 않았습니다. conf.yaml에 voice_checker 섹션을 추가하세요.",
+            503, detail="Voice Checker가 설정되지 않았습니다. config.yaml에 voice_checker 섹션을 추가하세요.",
         )
     return ctx
 

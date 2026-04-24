@@ -35,7 +35,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # 서비스 소스 (uv pip install . 가 wheel 빌드하려면 src 가 있어야 한다).
 # pyproject.toml 의 dependencies 가 외부 패키지 단일 source of truth.
 COPY pyproject.toml ./
-COPY main.py _setup_paths.py conf.example.yaml ./
+COPY main.py _setup_paths.py config.yaml ./
 COPY src/     src/
 COPY scripts/ scripts/
 COPY tools/   tools/

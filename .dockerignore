@@ -11,7 +11,7 @@ __pycache__/
 .venv/
 
 # 로컬 설정
-conf.yaml
+config.yaml
 
 # Git / IDE
 .git/
