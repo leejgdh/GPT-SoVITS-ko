@@ -58,6 +58,13 @@ RUN uv venv --python /usr/bin/python3.12 \
     && uv pip install --python /app/.venv/bin/python . \
     && rm -rf /root/.cache
 
+# NLTK 영어 G2P 리소스 — en_G2p 에서 pos_tag/word_tokenize 호출 시 필요.
+# 누락 시 한영 혼합 또는 text_lang=en 요청이 LookupError 로 실패한다.
+RUN /app/.venv/bin/python -m nltk.downloader -d /app/.venv/nltk_data \
+        averaged_perceptron_tagger_eng \
+        cmudict \
+        punkt_tab
+
 # 런타임 사용자 — compose build-arg로 호스트 UID/GID를 주입받아 bind mount 파일 소유권과 일치시킨다.
 # ubuntu 24.04 base 이미지는 기본 `ubuntu:ubuntu`(1000:1000) 사용자를 포함하므로 먼저 제거한다.
 # /app/logs, /app/data 는 bind mount로 덮이기 전에도 app 소유여야 loguru의 mkdir(exist_ok=True) 가
