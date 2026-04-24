@@ -10,9 +10,6 @@ __pycache__/
 *.pyo
 .venv/
 
-# 로컬 설정
-config.yaml
-
 # Git / IDE
 .git/
 .gitignore
