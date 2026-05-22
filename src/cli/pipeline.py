@@ -13,6 +13,7 @@ from pathlib import Path
 from loguru import logger
 
 from src.cli.logger import LOG_DIR, setup_logger
+from src.config.config import find_latest_weight
 
 # ---------------------------------------------------------------------------
 # 상수
@@ -45,11 +46,6 @@ def _run(cmd: list[str], label: str) -> None:
         logger.error("<<< {} 실패 (exit={})", label, result.returncode)
         sys.exit(result.returncode)
     logger.info("<<< {} 완료 ({:.0f}초)", label, elapsed)
-
-
-def _find_latest(directory: str, pattern: str) -> str | None:
-    files = glob.glob(os.path.join(directory, pattern))
-    return max(files, key=os.path.getmtime) if files else None
 
 
 def _find_ref_audio(voice_dir: str) -> str | None:
@@ -85,8 +81,8 @@ def _save_voice_yaml(
     from src.config.voice import save_voice_yaml
 
     step3 = os.path.join(voice_dir, "step3", version)
-    gpt_weights = _find_latest(os.path.join(step3, "02_gpt_weights"), "*.ckpt")
-    sovits_weights = _find_latest(os.path.join(step3, "04_sovits_weights"), "*.pth")
+    gpt_weights = find_latest_weight(os.path.join(step3, "02_gpt_weights"), "*.ckpt")
+    sovits_weights = find_latest_weight(os.path.join(step3, "04_sovits_weights"), "*.pth")
 
     if gpt_weights is None or sovits_weights is None:
         logger.warning("가중치를 찾을 수 없어 voice.yaml을 생성하지 않습니다")

@@ -74,7 +74,7 @@ class Config:
     voice_checker: VoiceCheckerConfig | None = None
 
 
-def _find_latest(directory: str, pattern: str) -> str | None:
+def find_latest_weight(directory: str, pattern: str) -> str | None:
     """디렉토리에서 가장 최근 수정된 파일을 찾는다."""
     files = glob.glob(os.path.join(directory, pattern))
     return max(files, key=os.path.getmtime) if files else None
@@ -90,13 +90,13 @@ def _resolve_voice_dir(custom: dict) -> None:
     step3 = os.path.join(voice_dir, "step3", version)
 
     if "t2s_weights_path" not in custom:
-        gpt_path = _find_latest(os.path.join(step3, "02_gpt_weights"), "*.ckpt")
+        gpt_path = find_latest_weight(os.path.join(step3, "02_gpt_weights"), "*.ckpt")
         if gpt_path:
             custom["t2s_weights_path"] = gpt_path
             logger.info("GPT 가중치 자동 탐색: {}", gpt_path)
 
     if "vits_weights_path" not in custom:
-        sovits_path = _find_latest(os.path.join(step3, "04_sovits_weights"), "*.pth")
+        sovits_path = find_latest_weight(os.path.join(step3, "04_sovits_weights"), "*.pth")
         if sovits_path:
             custom["vits_weights_path"] = sovits_path
             logger.info("SoVITS 가중치 자동 탐색: {}", sovits_path)
