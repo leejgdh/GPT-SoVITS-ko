@@ -1,6 +1,6 @@
 # GPT-SoVITS-ko TTS Service
 #
-# GPU 추론을 수행하므로 CUDA 런타임 베이스 이미지를 사용한다.
+# GPU 추론을 수행하므로 CUDA 베이스 이미지를 사용한다.
 # CUDA 버전은 compose의 build-arg로 주입 → 호스트 드라이버에 맞춰 조정 가능.
 # 모델/음성 데이터/설정/로그는 모두 compose의 bind mount로만 제공한다 (이미지는 stateless).
 #
@@ -8,35 +8,44 @@
 #   /app/module-services/tts-service/GPT-SoVITS-ko
 # bind mount 시 호스트와 컨테이너 경로가 1:1 로 매칭되어 디버깅이 직관적이다.
 #
+# 베이스 이미지 변종 (CUDA_VARIANT):
+# - base (기본): NVIDIA driver/container hook 만. torch wheel 이 자체 CUDA/cuDNN
+#   라이브러리를 번들로 들고 오므로 추론용으로는 이게 충분하다 (`base` 사용 시
+#   `cudnn-runtime` 대비 약 1.7GB 절감 — CUDA runtime + cuDNN 중복 제거).
+# - cudnn-runtime: ctranslate2/faster-whisper 등 시스템 cuDNN 을 dlopen 하는
+#   학습/ASR 의존성용. INSTALL_EXTRAS=training 으로 빌드 시 사용 권장.
+#
+# Multi-stage 구성:
+# - builder: build-essential + python-dev + uv 로 venv 생성 및 의존성 설치.
+# - runtime: builder 의 venv 만 복사. wheel 빌드 도구는 빠져 약 500MB 절감.
+#
 # 의존성 관리: pyproject.toml 을 single source of truth 로 사용.
 # - 기본 dependencies = 추론 + 다국어 g2p 만 (학습/ASR/UVR5 제외)
 # - 학습/데이터 준비용 이미지가 필요하면 INSTALL_EXTRAS=training 으로 빌드:
-#     docker build --build-arg INSTALL_EXTRAS=training -t gpt-sovits-ko:train .
+#     docker build --build-arg INSTALL_EXTRAS=training \
+#                  --build-arg CUDA_VARIANT=cudnn-runtime \
+#                  -t gpt-sovits-ko:train .
 #   여러 extras 는 콤마 구분: INSTALL_EXTRAS=training,voice-checker
 # - `[tool.uv.index]` / `[tool.uv.sources]` 가 그대로 적용되어 pytorch-cu126 채널로 토치 수급
 
 ARG CUDA_VERSION=12.6.3
-ARG CUDNN_VARIANT=cudnn
+ARG CUDA_VARIANT=base
 ARG UBUNTU_VERSION=24.04
 ARG INSTALL_EXTRAS=""
 
-FROM nvidia/cuda:${CUDA_VERSION}-${CUDNN_VARIANT}-runtime-ubuntu${UBUNTU_VERSION}
-
-ARG USER_UID=1000
-ARG USER_GID=1000
+# === Stage 1: builder — 의존성 설치 ===
+FROM nvidia/cuda:${CUDA_VERSION}-${CUDA_VARIANT}-ubuntu${UBUNTU_VERSION} AS builder
 
 WORKDIR /app/module-services/tts-service/GPT-SoVITS-ko
 
-# 시스템 패키지 — Python 3.12 + 오디오 처리(ffmpeg/libsndfile) + 빌드 도구(일부 wheel이 source build)
+# 빌드 시스템 + Python 헤더. 일부 wheel 이 source build 라 dev 헤더 필요.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.12 python3.12-venv python3.12-dev \
-        ffmpeg libsndfile1 \
         build-essential \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
-# uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # 서비스 소스 (uv pip install . 가 wheel 빌드하려면 src 가 있어야 한다).
@@ -79,6 +88,29 @@ RUN /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python -m nltk.down
         averaged_perceptron_tagger_eng \
         cmudict \
         punkt_tab
+
+
+# === Stage 2: runtime — 추론 실행만 ===
+FROM nvidia/cuda:${CUDA_VERSION}-${CUDA_VARIANT}-ubuntu${UBUNTU_VERSION}
+
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+WORKDIR /app/module-services/tts-service/GPT-SoVITS-ko
+
+# runtime 필수: python3.12 인터프리터 + 오디오 처리 (ffmpeg/libsndfile).
+# build tools / dev 헤더는 builder 전용이라 여기 없음 — 약 500MB 절감.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.12 \
+        ffmpeg libsndfile1 \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+# builder 에서 만든 venv + source 를 통째로 가져온다.
+# venv 의 shebang/symlink 가 절대경로라 builder 와 동일 경로 유지 필수.
+COPY --from=builder /app/module-services/tts-service/GPT-SoVITS-ko \
+                    /app/module-services/tts-service/GPT-SoVITS-ko
 
 # 런타임 사용자 — compose build-arg로 호스트 UID/GID를 주입받아 bind mount 파일 소유권과 일치시킨다.
 # ubuntu 24.04 base 이미지는 기본 `ubuntu:ubuntu`(1000:1000) 사용자를 포함하므로 먼저 제거한다.
