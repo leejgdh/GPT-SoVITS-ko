@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -151,6 +152,17 @@ class ServiceContext:
         # GPT + SoVITS 가중치 로드 (voice별로 각각 학습된 모델)
         self._tts_pipeline.init_t2s_weights(profile.gpt_weights)
         self._tts_pipeline.init_vits_weights(profile.sovits_weights)
+
+        # 이전 voice 의 가중치 메모리 회수 — init_*_weights 가 self.{t2s,vits}_model
+        # 을 *덮어쓰기* 라 옛 모델은 reference 0 인데 PyTorch CUDA cache 가 잡고
+        # 있다. 명시 gc + cache flush 로 CPU RAM / VRAM 양쪽 회수.
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception as e:
+            logger.debug("CUDA empty_cache skip ({}): {}", type(e).__name__, e)
 
         # 메트릭: 이전 voice 를 0 으로 내리고 새 voice 를 1 로.
         if self._current_voice:

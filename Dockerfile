@@ -62,14 +62,15 @@ COPY GPT_SoVITS/*.py              GPT_SoVITS/
 # 의존성 + 프로젝트 자체 설치. Python 경로를 명시하여 uv 가 임의 Python 을
 # 다운로드하지 않도록 한다 (비-root 실행 시 /root/.local 접근 불가 문제 회피).
 # INSTALL_EXTRAS 가 비어있으면 추론 base 만, 값이 있으면 해당 extras 도 추가 설치.
+# BuildKit cache mount — uv wheel 캐시 영속화 (layer 에 안 남으므로 이미지 size 무관).
 ARG INSTALL_EXTRAS
-RUN uv venv --python /usr/bin/python3.12 \
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv venv --python /usr/bin/python3.12 \
     && if [ -z "${INSTALL_EXTRAS}" ]; then \
          uv pip install --python /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python . ; \
        else \
          uv pip install --python /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python ".[${INSTALL_EXTRAS}]" ; \
-       fi \
-    && rm -rf /root/.cache
+       fi
 
 # NLTK 영어 G2P 리소스 — en_G2p 에서 pos_tag/word_tokenize 호출 시 필요.
 # 누락 시 한영 혼합 또는 text_lang=en 요청이 LookupError 로 실패한다.
