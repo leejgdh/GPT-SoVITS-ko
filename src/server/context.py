@@ -38,11 +38,15 @@ class ServiceContext:
 
         # device / is_half 가 conf.yaml 에 명시되지 않았으면 자동 감지로 채운다.
         # (TTS_Config 기본값은 device='cpu', is_half=False 라 GPU 가 있어도 못 활용.)
+        # custom 키를 만들면 TTS_Config 가 v2Pro default 를 무시하므로 — version /
+        # weights 경로가 누락되어 assert 실패. v2Pro default 를 base 로 깔고 사용자
+        # override 를 위에 머지한다.
         tts_dict = dict(config.tts) if isinstance(config.tts, dict) else {}
-        custom = dict(tts_dict.get("custom", {}))
-        if "device" not in custom:
+        user_custom = dict(tts_dict.get("custom", {}))
+        custom = {**TTS_Config.default_configs["v2Pro"], **user_custom}
+        if "device" not in user_custom:
             custom["device"] = str(detect_device())
-        if "is_half" not in custom:
+        if "is_half" not in user_custom:
             custom["is_half"] = detect_half()
         tts_dict["custom"] = custom
 
