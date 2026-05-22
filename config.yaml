@@ -6,6 +6,16 @@ service:
   host: 0.0.0.0
   port: 14983
 
+# TTS 엔진 설정 (선택)
+# device / is_half 가 비어있으면 자동 감지됨 (CUDA 가용 + SM>=7.0 GPU → fp16).
+# 명시적으로 고정하고 싶을 때만 적습니다:
+# tts:
+#   custom:
+#     device: cuda:0       # 또는 cpu
+#     is_half: true        # fp16 (GPU 메모리 절반)
+#     version: v2Pro
+#     voice_dir: data/voice/dahwi   # step3 결과에서 가중치 자동 탐색
+
 # voice 디렉토리 루트 (하위에서 voice.yaml을 스캔)
 voices_dir: data/voice
 

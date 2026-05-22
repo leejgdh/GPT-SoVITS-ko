@@ -31,12 +31,27 @@ class ServiceContext:
     def create(cls, config: Config) -> ServiceContext:
         """설정에서 TTS 파이프라인을 초기화하고 voice를 스캔한다."""
         from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
+        from src.config.config import detect_device, detect_half
 
         ctx = cls(config)
 
+        # device / is_half 가 conf.yaml 에 명시되지 않았으면 자동 감지로 채운다.
+        # (TTS_Config 기본값은 device='cpu', is_half=False 라 GPU 가 있어도 못 활용.)
+        tts_dict = dict(config.tts) if isinstance(config.tts, dict) else {}
+        custom = dict(tts_dict.get("custom", {}))
+        if "device" not in custom:
+            custom["device"] = str(detect_device())
+        if "is_half" not in custom:
+            custom["is_half"] = detect_half()
+        tts_dict["custom"] = custom
+
         # TTS 파이프라인 초기화 (pretrained 모델 없으면 스킵)
         try:
-            ctx._tts_config = TTS_Config(config.tts)
+            ctx._tts_config = TTS_Config(tts_dict)
+            logger.info(
+                "TTS device={} is_half={} version={}",
+                ctx._tts_config.device, ctx._tts_config.is_half, ctx._tts_config.version,
+            )
             ctx._tts_pipeline = TTS(ctx._tts_config)
             logger.info("TTS 파이프라인 초기화 완료")
         except (FileNotFoundError, OSError) as e:

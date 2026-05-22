@@ -98,6 +98,7 @@ def create_app() -> FastAPI:
     # 순서 주의: outer → inner. RequestId 먼저, Metrics 가 실핸들러 가까이.
     app.add_middleware(_MetricsMiddleware)
     app.add_middleware(_RequestIdMiddleware)
+    # 내부망 전용 — 모든 origin 허용. 외부 노출 시 origin 화이트리스트 필요.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
