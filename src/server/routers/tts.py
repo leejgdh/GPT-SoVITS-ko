@@ -223,7 +223,11 @@ async def _synthesize_stream(
     ctx: ServiceContext, voice_name: str, req: dict,
     media_type: str, volume: float = 1.0,
 ):
-    """TTS 스트리밍 합성 (잠금 하에 실행)."""
+    """TTS 스트리밍 합성 (잠금 하에 실행).
+
+    합성 generator 의 next() 와 chunk 인코딩 (_pack_audio) 모두 to_thread 로
+    감싸 event loop 블로킹을 회피한다. ogg/aac 는 인코더 호출이 무거워 특히 중요.
+    """
     async with ctx.lock:
         await asyncio.to_thread(ctx.switch_voice, voice_name)
         gen = ctx.tts.synthesize(req)
@@ -238,7 +242,10 @@ async def _synthesize_stream(
             if first and media_type == "wav":
                 yield _wave_header_chunk(sample_rate=sr)
                 first = False
-            yield _pack_audio(BytesIO(), data, sr, media_type).getvalue()
+            encoded = await asyncio.to_thread(
+                lambda d=data, r=sr: _pack_audio(BytesIO(), d, r, media_type).getvalue()
+            )
+            yield encoded
 
 
 # ---------------------------------------------------------------------------
