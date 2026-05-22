@@ -9,13 +9,16 @@
 # bind mount 시 호스트와 컨테이너 경로가 1:1 로 매칭되어 디버깅이 직관적이다.
 #
 # 의존성 관리: pyproject.toml 을 single source of truth 로 사용.
-# - `uv pip install .` 로 프로젝트 자기 자신 + 모든 외부 의존성 설치
+# - 기본 dependencies = 추론 + 다국어 g2p 만 (학습/ASR/UVR5 제외)
+# - 학습/데이터 준비용 이미지가 필요하면 INSTALL_EXTRAS=training 으로 빌드:
+#     docker build --build-arg INSTALL_EXTRAS=training -t gpt-sovits-ko:train .
+#   여러 extras 는 콤마 구분: INSTALL_EXTRAS=training,voice-checker
 # - `[tool.uv.index]` / `[tool.uv.sources]` 가 그대로 적용되어 pytorch-cu126 채널로 토치 수급
-# - Dockerfile 에 별도 하드코드된 패키지 목록 없음 — 의존성 추가는 pyproject.toml 만 수정
 
 ARG CUDA_VERSION=12.6.3
 ARG CUDNN_VARIANT=cudnn
 ARG UBUNTU_VERSION=24.04
+ARG INSTALL_EXTRAS=""
 
 FROM nvidia/cuda:${CUDA_VERSION}-${CUDNN_VARIANT}-runtime-ubuntu${UBUNTU_VERSION}
 
@@ -58,8 +61,14 @@ COPY GPT_SoVITS/*.py              GPT_SoVITS/
 
 # 의존성 + 프로젝트 자체 설치. Python 경로를 명시하여 uv 가 임의 Python 을
 # 다운로드하지 않도록 한다 (비-root 실행 시 /root/.local 접근 불가 문제 회피).
+# INSTALL_EXTRAS 가 비어있으면 추론 base 만, 값이 있으면 해당 extras 도 추가 설치.
+ARG INSTALL_EXTRAS
 RUN uv venv --python /usr/bin/python3.12 \
-    && uv pip install --python /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python . \
+    && if [ -z "${INSTALL_EXTRAS}" ]; then \
+         uv pip install --python /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python . ; \
+       else \
+         uv pip install --python /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python ".[${INSTALL_EXTRAS}]" ; \
+       fi \
     && rm -rf /root/.cache
 
 # NLTK 영어 G2P 리소스 — en_G2p 에서 pos_tag/word_tokenize 호출 시 필요.
