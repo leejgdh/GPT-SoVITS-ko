@@ -93,9 +93,6 @@ RUN /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python -m nltk.down
 # === Stage 2: runtime — 추론 실행만 ===
 FROM nvidia/cuda:${CUDA_VERSION}-${CUDA_VARIANT}-ubuntu${UBUNTU_VERSION}
 
-ARG USER_UID=1000
-ARG USER_GID=1000
-
 WORKDIR /app/module-services/tts-service/GPT-SoVITS-ko
 
 # runtime 필수: python3.12 인터프리터 + 오디오 처리 (ffmpeg/libsndfile).
@@ -112,26 +109,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /app/module-services/tts-service/GPT-SoVITS-ko \
                     /app/module-services/tts-service/GPT-SoVITS-ko
 
-# 런타임 사용자 — compose build-arg로 호스트 UID/GID를 주입받아 bind mount 파일 소유권과 일치시킨다.
-# ubuntu 24.04 base 이미지는 기본 `ubuntu:ubuntu`(1000:1000) 사용자를 포함하므로 먼저 제거한다.
-# logs, data 는 bind mount로 덮이기 전에도 app 소유여야 loguru의 mkdir(exist_ok=True) 가
-# 성공한다(볼륨 누락 시 fallback). GPT_SoVITS/pretrained_models 는 항상 volume이라 제외.
-RUN userdel -r ubuntu 2>/dev/null || true; \
-    groupdel ubuntu 2>/dev/null || true; \
-    groupadd -g ${USER_GID} app \
-    && useradd -m -u ${USER_UID} -g ${USER_GID} -s /bin/sh app \
-    && mkdir -p /app/module-services/tts-service/GPT-SoVITS-ko/logs \
-                /app/module-services/tts-service/GPT-SoVITS-ko/data \
-    && chown -R ${USER_UID}:${USER_GID} \
-                /app/module-services/tts-service/GPT-SoVITS-ko/logs \
-                /app/module-services/tts-service/GPT-SoVITS-ko/data
+# bind mount 누락 시 fallback 용 디렉토리 미리 생성 (loguru mkdir(exist_ok=True) 성공 보장).
+RUN mkdir -p /app/module-services/tts-service/GPT-SoVITS-ko/logs \
+             /app/module-services/tts-service/GPT-SoVITS-ko/data
 
-ENV HOME=/home/app
 ENV PATH="/app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 14983
-
-USER app
 
 CMD ["python", "main.py", "serve"]
