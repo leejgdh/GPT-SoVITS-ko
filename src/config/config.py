@@ -1,27 +1,34 @@
+"""tts-service 설정 모델 + 디바이스 감지 helper.
+
+pydantic v2 BaseModel 기반 — VCAugmentationConfig.enabled 등 bool 필드의 env
+치환 함정 (``bool("false") == True``) 을 BoolValidator 가 자동 해결.
+"""
+
 from __future__ import annotations
 
 import glob
 import os
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
 import yaml
 from loguru import logger
+from pydantic import BaseModel, Field, ValidationError
+
+from src.exceptions import ConfigError
 
 # ---------------------------------------------------------------------------
-# Dataclass 설정
+# BaseModel 설정
 # ---------------------------------------------------------------------------
 
-@dataclass
-class ServiceConfig:
+
+class ServiceConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 9880
 
 
-@dataclass
-class VCAudioConfig:
+class VCAudioConfig(BaseModel):
     sample_rate: int = 44100
     n_mels: int = 64
     n_fft: int = 1024
@@ -29,45 +36,43 @@ class VCAudioConfig:
     target_length: int = 128
 
 
-@dataclass
-class VCTrainingConfig:
-    batch_size: int = 16
-    epochs: int = 50
-    learning_rate: float = 0.001
-    weight_decay: float = 0.0001
-    val_ratio: float = 0.2
-    early_stop_patience: int = 10
+class VCTrainingConfig(BaseModel):
+    batch_size: int = Field(default=16, gt=0)
+    epochs: int = Field(default=50, gt=0)
+    learning_rate: float = Field(default=0.001, gt=0.0)
+    weight_decay: float = Field(default=0.0001, ge=0.0)
+    val_ratio: float = Field(default=0.2, ge=0.0, lt=1.0)
+    early_stop_patience: int = Field(default=10, ge=0)
     seed: int = 42
 
 
-@dataclass
-class VCAugmentationConfig:
+class VCAugmentationConfig(BaseModel):
     enabled: bool = True
-    time_mask_param: int = 10
-    freq_mask_param: int = 5
-    noise_std: float = 0.005
-    minority_oversample: int = 5
+    time_mask_param: int = Field(default=10, ge=0)
+    freq_mask_param: int = Field(default=5, ge=0)
+    noise_std: float = Field(default=0.005, ge=0.0)
+    minority_oversample: int = Field(default=5, ge=0)
 
 
-@dataclass
-class VCInferenceConfig:
+class VCInferenceConfig(BaseModel):
     model_path: str = "data/voice-checker/models/best_model.pth"
-    threshold: float = 0.5
+    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
-@dataclass
-class VoiceCheckerConfig:
+class VoiceCheckerConfig(BaseModel):
     """Voice Checker 설정. config.yaml에 voice_checker 섹션이 있으면 활성화."""
-    audio: VCAudioConfig = field(default_factory=VCAudioConfig)
-    training: VCTrainingConfig = field(default_factory=VCTrainingConfig)
-    augmentation: VCAugmentationConfig = field(default_factory=VCAugmentationConfig)
-    inference: VCInferenceConfig = field(default_factory=VCInferenceConfig)
+
+    audio: VCAudioConfig = Field(default_factory=VCAudioConfig)
+    training: VCTrainingConfig = Field(default_factory=VCTrainingConfig)
+    augmentation: VCAugmentationConfig = Field(default_factory=VCAugmentationConfig)
+    inference: VCInferenceConfig = Field(default_factory=VCInferenceConfig)
 
 
-@dataclass
-class Config:
-    service: ServiceConfig = field(default_factory=ServiceConfig)
-    tts: dict = field(default_factory=dict)
+class Config(BaseModel):
+    service: ServiceConfig = Field(default_factory=ServiceConfig)
+    # tts 는 GPT-SoVITS 원본의 자유 dict — version / device / custom 등 양식 다양.
+    # BaseModel 로 묶기엔 키 집합이 너무 가변적이라 raw dict 유지.
+    tts: dict = Field(default_factory=dict)
     voices_dir: str = "data/voice"
     default_voice: str | None = None
     log_level: str = "INFO"
@@ -103,36 +108,26 @@ def _resolve_voice_dir(custom: dict) -> None:
 
 
 def load_config(path: Path) -> Config:
+    """yaml 파일 한 번 ``Config.model_validate`` 로 전체 변환.
+
+    tts dict 는 GPT-SoVITS 원본의 free-form 양식이라 BaseModel 로 묶지 않고
+    그대로 dict 유지 — 그 안의 키 (custom / version / weights 등) 는 free-form
+    영역이므로 dict 접근 양식 OK.
+    """
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
 
-    svc = data.get("service", {})
-    tts = data.get("tts", {})
+    try:
+        cfg = Config.model_validate(data)
+    except ValidationError as e:
+        raise ConfigError(f"설정 검증 실패: {e}") from e
 
-    if "custom" in tts:
-        _resolve_voice_dir(tts["custom"])
+    # tts.custom.voice_dir 자동 탐색 — tts 는 free-form 양식이라 dict 접근 영역.
+    custom = cfg.tts.get("custom")
+    if isinstance(custom, dict):
+        _resolve_voice_dir(custom)
 
-    vc_data = data.get("voice_checker")
-    vc_config = None
-    if vc_data is not None:
-        vc_config = VoiceCheckerConfig(
-            audio=VCAudioConfig(**vc_data["audio"]) if "audio" in vc_data else VCAudioConfig(),
-            training=VCTrainingConfig(**vc_data["training"]) if "training" in vc_data else VCTrainingConfig(),
-            augmentation=VCAugmentationConfig(**vc_data["augmentation"]) if "augmentation" in vc_data else VCAugmentationConfig(),
-            inference=VCInferenceConfig(**vc_data["inference"]) if "inference" in vc_data else VCInferenceConfig(),
-        )
-
-    return Config(
-        service=ServiceConfig(
-            host=svc.get("host", "0.0.0.0"),
-            port=svc.get("port", 9880),
-        ),
-        tts=tts,
-        voices_dir=data.get("voices_dir", "data/voice"),
-        default_voice=data.get("default_voice"),
-        log_level=data.get("log_level", "INFO"),
-        voice_checker=vc_config,
-    )
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +156,7 @@ pretrained_gpt_name: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # GPU / Device 감지
 # ---------------------------------------------------------------------------
+
 
 def get_device_dtype_sm(idx: int) -> tuple[torch.device, torch.dtype, float, float]:
     cpu = torch.device("cpu")
@@ -196,5 +192,3 @@ def detect_half() -> bool:
     gpu_count = torch.cuda.device_count()
     results = [get_device_dtype_sm(i) for i in range(max(gpu_count, 1))]
     return any(dtype == torch.float16 for _, dtype, _, _ in results)
-
-
