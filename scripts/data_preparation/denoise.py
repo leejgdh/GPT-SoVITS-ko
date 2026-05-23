@@ -63,12 +63,26 @@ def _to_wav16k(inp_path: str, tmp_dir: str) -> str:
     return tmp_path
 
 
+def _resolve_model_path(user_path: str | None) -> str:
+    # 우선순위: --model-path → 프로젝트 로컬 → modelscope hub 캐시 → model_id (자동 다운로드).
+    # 캐시가 있어도 model_id 로 호출하면 modelscope 가 hub 메타데이터 동기화를 시도해 정체될 수 있어,
+    # 로컬 절대 경로를 직접 넘긴다.
+    if user_path:
+        return user_path
+    if os.path.exists(_DEFAULT_MODEL_PATH):
+        return _DEFAULT_MODEL_PATH
+    cache_root = os.environ.get("MODELSCOPE_CACHE") or os.path.expanduser("~/.cache/modelscope/hub")
+    cached = os.path.join(cache_root, "models", _FALLBACK_MODEL_ID)
+    if os.path.isdir(cached):
+        return cached
+    return _FALLBACK_MODEL_ID
+
+
 def main() -> None:
     args = _parse_args()
 
-    model_path = args.model_path or _DEFAULT_MODEL_PATH
-    if not os.path.exists(model_path):
-        model_path = _FALLBACK_MODEL_ID
+    model_path = _resolve_model_path(args.model_path)
+    logger.info("FRCRN 모델 경로: {}", model_path)
 
     ans = pipeline(Tasks.acoustic_noise_suppression, model=model_path)
 
