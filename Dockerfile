@@ -1,44 +1,34 @@
 # GPT-SoVITS-ko TTS Service
 #
-# GPU 추론을 수행하므로 CUDA 베이스 이미지를 사용한다.
-# CUDA 버전은 compose의 build-arg로 주입 → 호스트 드라이버에 맞춰 조정 가능.
-# 모델/음성 데이터/설정/로그는 모두 compose의 bind mount로만 제공한다 (이미지는 stateless).
+# 단일 Dockerfile 에서 두 변종을 빌드한다 — multi-stage --target 분기:
 #
-# 컨테이너 내부 경로는 호스트 monorepo 경로와 동일하게 둔다 (다른 백엔드 서비스와 일관):
-#   /app/module-services/tts-service/GPT-SoVITS-ko
+#   docker build --target infer -t gpt-sovits-ko:infer .   # 추론 전용 (가벼움)
+#   docker build --target train -t gpt-sovits-ko:train .   # 학습 + 추론
+#
+# 기본 target 은 infer (--target 생략 시 추론 이미지 빌드).
+#
+# 두 변종의 차이:
+# - infer: CUDA base 베이스 + dependencies 만 + 추론 소스 (scripts/inference, tools/audio,
+#   tools/AP_BWE_main, tools/utils) — 학습 코드는 들어가지 않는다. TTS_MODE=infer.
+# - train: CUDA cudnn-runtime 베이스 + [training,voice-checker] extras + 전체 소스.
+#   ctranslate2 / faster-whisper 가 시스템 cuDNN 을 dlopen 하므로 cudnn-runtime 필수.
+#
+# 컨테이너 내부 경로는 호스트 monorepo 경로와 동일하게 둔다 (다른 백엔드 서비스와 일관).
 # bind mount 시 호스트와 컨테이너 경로가 1:1 로 매칭되어 디버깅이 직관적이다.
 #
-# 베이스 이미지 변종 (CUDA_VARIANT):
-# - base (기본): NVIDIA driver/container hook 만. torch wheel 이 자체 CUDA/cuDNN
-#   라이브러리를 번들로 들고 오므로 추론용으로는 이게 충분하다 (`base` 사용 시
-#   `cudnn-runtime` 대비 약 1.7GB 절감 — CUDA runtime + cuDNN 중복 제거).
-# - cudnn-runtime: ctranslate2/faster-whisper 등 시스템 cuDNN 을 dlopen 하는
-#   학습/ASR 의존성용. INSTALL_EXTRAS=training 으로 빌드 시 사용 권장.
-#
-# Multi-stage 구성:
-# - builder: build-essential + python-dev + uv 로 venv 생성 및 의존성 설치.
-# - runtime: builder 의 venv 만 복사. wheel 빌드 도구는 빠져 약 500MB 절감.
-#
-# 의존성 관리: pyproject.toml 을 single source of truth 로 사용.
-# - 기본 dependencies = 추론 + 다국어 g2p 만 (학습/ASR/UVR5 제외)
-# - 학습/데이터 준비용 이미지가 필요하면 INSTALL_EXTRAS=training 으로 빌드:
-#     docker build --build-arg INSTALL_EXTRAS=training \
-#                  --build-arg CUDA_VARIANT=cudnn-runtime \
-#                  -t gpt-sovits-ko:train .
-#   여러 extras 는 콤마 구분: INSTALL_EXTRAS=training,voice-checker
-# - `[tool.uv.index]` / `[tool.uv.sources]` 가 그대로 적용되어 pytorch-cu126 채널로 토치 수급
+# 모델 / voice 데이터 / 설정 / 로그는 모두 compose 의 bind mount 로만 제공 — 이미지는 stateless.
+# 의존성은 pyproject.toml 이 single source of truth.
 
 ARG CUDA_VERSION=12.6.3
-ARG CUDA_VARIANT=base
 ARG UBUNTU_VERSION=24.04
-ARG INSTALL_EXTRAS=""
 
-# === Stage 1: builder — 의존성 설치 ===
-FROM nvidia/cuda:${CUDA_VERSION}-${CUDA_VARIANT}-ubuntu${UBUNTU_VERSION} AS builder
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 1a: builder-infer — 추론용 의존성 + 소스
+# ─────────────────────────────────────────────────────────────────────────────
+FROM nvidia/cuda:${CUDA_VERSION}-base-ubuntu${UBUNTU_VERSION} AS builder-infer
 
 WORKDIR /app/module-services/tts-service/GPT-SoVITS-ko
 
-# 빌드 시스템 + Python 헤더. 일부 wheel 이 source build 라 dev 헤더 필요.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.12 python3.12-venv python3.12-dev \
         build-essential \
@@ -48,15 +38,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# 서비스 소스 (uv pip install . 가 wheel 빌드하려면 src 가 있어야 한다).
-# pyproject.toml 의 dependencies 가 외부 패키지 단일 source of truth.
+# 추론에 필요한 소스만 — 학습 전용 디렉토리는 의도적으로 제외.
 COPY pyproject.toml ./
 COPY main.py _setup_paths.py config.yaml ./
-COPY src/     src/
-COPY scripts/ scripts/
-COPY tools/   tools/
+COPY src/                         src/
+COPY scripts/_bootstrap.py        scripts/_bootstrap.py
+COPY scripts/inference/           scripts/inference/
 
-# 벤더 코드 (GPT_SoVITS) — pretrained_models 는 볼륨으로 주입되므로 제외
+# 벤더 코드 — pretrained_models 는 볼륨 주입이라 제외.
 COPY GPT_SoVITS/AR                GPT_SoVITS/AR/
 COPY GPT_SoVITS/BigVGAN           GPT_SoVITS/BigVGAN/
 COPY GPT_SoVITS/TTS_infer_pack    GPT_SoVITS/TTS_infer_pack/
@@ -68,21 +57,22 @@ COPY GPT_SoVITS/module            GPT_SoVITS/module/
 COPY GPT_SoVITS/text              GPT_SoVITS/text/
 COPY GPT_SoVITS/*.py              GPT_SoVITS/
 
-# 의존성 + 프로젝트 자체 설치. Python 경로를 명시하여 uv 가 임의 Python 을
-# 다운로드하지 않도록 한다 (비-root 실행 시 /root/.local 접근 불가 문제 회피).
-# INSTALL_EXTRAS 가 비어있으면 추론 base 만, 값이 있으면 해당 extras 도 추가 설치.
-# BuildKit cache mount — uv wheel 캐시 영속화 (layer 에 안 남으므로 이미지 size 무관).
-ARG INSTALL_EXTRAS
+# tools — 추론 런타임에 필요한 것만:
+#   tools/audio              : TTS_infer_pack/TTS.py 의 v3/v4 super_res
+#   tools/AP_BWE_main        : tools/audio/super_res.py 가 sys.path 로 import
+#   tools/label-review.html  : /review 라우터가 서빙
+#   tools/utils              : scripts/inference 의 load_audio / clean_path (fallback,
+#                              사용자가 컨테이너 내에서 단독 inference 스크립트 호출 시)
+COPY tools/audio/        tools/audio/
+COPY tools/AP_BWE_main/  tools/AP_BWE_main/
+COPY tools/label-review.html tools/label-review.html
+COPY tools/utils/        tools/utils/
+
+# 의존성 + 프로젝트 설치 (extras 없음). BuildKit cache mount 로 wheel 캐시 영속화.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv --python /usr/bin/python3.12 \
-    && if [ -z "${INSTALL_EXTRAS}" ]; then \
-         uv pip install --python /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python . ; \
-       else \
-         uv pip install --python /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python ".[${INSTALL_EXTRAS}]" ; \
-       fi
+    && uv pip install --python /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python .
 
-# NLTK 영어 G2P 리소스 — en_G2p 에서 pos_tag/word_tokenize 호출 시 필요.
-# 누락 시 한영 혼합 또는 text_lang=en 요청이 LookupError 로 실패한다.
 RUN /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python -m nltk.downloader \
         -d /app/module-services/tts-service/GPT-SoVITS-ko/.venv/nltk_data \
         averaged_perceptron_tagger_eng \
@@ -90,13 +80,59 @@ RUN /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python -m nltk.down
         punkt_tab
 
 
-# === Stage 2: runtime — 추론 실행만 ===
-FROM nvidia/cuda:${CUDA_VERSION}-${CUDA_VARIANT}-ubuntu${UBUNTU_VERSION}
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 1b: builder-train — 학습 의존성 + 전체 소스
+# ─────────────────────────────────────────────────────────────────────────────
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION} AS builder-train
 
 WORKDIR /app/module-services/tts-service/GPT-SoVITS-ko
 
-# runtime 필수: python3.12 인터프리터 + 오디오 처리 (ffmpeg/libsndfile).
-# build tools / dev 헤더는 builder 전용이라 여기 없음 — 약 500MB 절감.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.12 python3.12-venv python3.12-dev \
+        build-essential \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# 학습 이미지는 전체 소스가 필요 (scripts/training / tools/uvr5 / tools/asr / tools/voice-checker / ...).
+COPY pyproject.toml ./
+COPY main.py _setup_paths.py config.yaml ./
+COPY src/        src/
+COPY scripts/    scripts/
+COPY tools/      tools/
+
+COPY GPT_SoVITS/AR                GPT_SoVITS/AR/
+COPY GPT_SoVITS/BigVGAN           GPT_SoVITS/BigVGAN/
+COPY GPT_SoVITS/TTS_infer_pack    GPT_SoVITS/TTS_infer_pack/
+COPY GPT_SoVITS/configs           GPT_SoVITS/configs/
+COPY GPT_SoVITS/eres2net          GPT_SoVITS/eres2net/
+COPY GPT_SoVITS/f5_tts            GPT_SoVITS/f5_tts/
+COPY GPT_SoVITS/feature_extractor GPT_SoVITS/feature_extractor/
+COPY GPT_SoVITS/module            GPT_SoVITS/module/
+COPY GPT_SoVITS/text              GPT_SoVITS/text/
+COPY GPT_SoVITS/*.py              GPT_SoVITS/
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv venv --python /usr/bin/python3.12 \
+    && uv pip install --python /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python \
+        ".[training,voice-checker]"
+
+RUN /app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin/python -m nltk.downloader \
+        -d /app/module-services/tts-service/GPT-SoVITS-ko/.venv/nltk_data \
+        averaged_perceptron_tagger_eng \
+        cmudict \
+        punkt_tab
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 2a: train — 학습 런타임
+# ─────────────────────────────────────────────────────────────────────────────
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION} AS train
+
+WORKDIR /app/module-services/tts-service/GPT-SoVITS-ko
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.12 \
         ffmpeg libsndfile1 \
@@ -104,17 +140,44 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
-# builder 에서 만든 venv + source 를 통째로 가져온다.
-# venv 의 shebang/symlink 가 절대경로라 builder 와 동일 경로 유지 필수.
-COPY --from=builder /app/module-services/tts-service/GPT-SoVITS-ko \
-                    /app/module-services/tts-service/GPT-SoVITS-ko
+COPY --from=builder-train /app/module-services/tts-service/GPT-SoVITS-ko \
+                          /app/module-services/tts-service/GPT-SoVITS-ko
 
-# bind mount 누락 시 fallback 용 디렉토리 미리 생성 (loguru mkdir(exist_ok=True) 성공 보장).
 RUN mkdir -p /app/module-services/tts-service/GPT-SoVITS-ko/logs \
              /app/module-services/tts-service/GPT-SoVITS-ko/data
 
 ENV PATH="/app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
+ENV TTS_MODE=train
+
+EXPOSE 14983
+
+CMD ["python", "main.py", "serve"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 2b: infer — 추론 런타임 (기본 target — --target 생략 시 이게 빌드됨)
+# ─────────────────────────────────────────────────────────────────────────────
+FROM nvidia/cuda:${CUDA_VERSION}-base-ubuntu${UBUNTU_VERSION} AS infer
+
+WORKDIR /app/module-services/tts-service/GPT-SoVITS-ko
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.12 \
+        ffmpeg libsndfile1 \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder-infer /app/module-services/tts-service/GPT-SoVITS-ko \
+                          /app/module-services/tts-service/GPT-SoVITS-ko
+
+RUN mkdir -p /app/module-services/tts-service/GPT-SoVITS-ko/logs \
+             /app/module-services/tts-service/GPT-SoVITS-ko/data
+
+ENV PATH="/app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin:${PATH}"
+ENV PYTHONUNBUFFERED=1
+ENV TTS_MODE=infer
 
 EXPOSE 14983
 
