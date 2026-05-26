@@ -11,6 +11,7 @@ _PROJECT_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
 )
 _REVIEW_HTML = os.path.join(_PROJECT_ROOT, "tools", "label-review.html")
+_DEMO_HTML = os.path.join(_PROJECT_ROOT, "tools", "tts-demo.html")
 
 
 @router.get("/health")
@@ -37,6 +38,13 @@ async def review_page():
         " });",
     )
     return HTMLResponse(content=html)
+
+
+@router.get("/demo", response_class=HTMLResponse)
+async def demo_page():
+    """TTS 데모 UI 를 서빙한다. 텍스트 입력 → voice/emotion 선택 → inline 재생."""
+    with open(_DEMO_HTML, encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
 
 
 # /control (restart/exit) 엔드포인트는 인증 게이트가 없어 외부 노출 시 DoS/프로세스

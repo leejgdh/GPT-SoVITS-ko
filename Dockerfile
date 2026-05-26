@@ -61,11 +61,13 @@ COPY GPT_SoVITS/*.py              GPT_SoVITS/
 #   tools/audio              : TTS_infer_pack/TTS.py 의 v3/v4 super_res
 #   tools/AP_BWE_main        : tools/audio/super_res.py 가 sys.path 로 import
 #   tools/label-review.html  : /review 라우터가 서빙
+#   tools/tts-demo.html      : /demo 라우터가 서빙
 #   tools/utils              : scripts/inference 의 load_audio / clean_path (fallback,
 #                              사용자가 컨테이너 내에서 단독 inference 스크립트 호출 시)
 COPY tools/audio/        tools/audio/
 COPY tools/AP_BWE_main/  tools/AP_BWE_main/
 COPY tools/label-review.html tools/label-review.html
+COPY tools/tts-demo.html tools/tts-demo.html
 COPY tools/utils/        tools/utils/
 
 # 의존성 + 프로젝트 설치 (extras 없음). BuildKit cache mount 로 wheel 캐시 영속화.
