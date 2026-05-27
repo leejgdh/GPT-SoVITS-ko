@@ -170,7 +170,10 @@ def get_device_dtype_sm(idx: int) -> tuple[torch.device, torch.dtype, float, flo
     major, minor = capability
     sm_version = major + minor / 10.0
     is_16_series = bool(re.search(r"16\d{2}", name)) and sm_version == 7.5
-    if mem_gb < 4 or sm_version < 5.3:
+    # sm_version 가드만 유지 — Maxwell 이전 (sm < 5.3) 은 float 연산 자체가
+    # 불안정. VRAM 사이즈 가드는 제거 — 작은 GPU 도 시도 가능 (모델 로드 시점에
+    # OOM 으로 떨어지더라도 정책적 차단 X).
+    if sm_version < 5.3:
         return cpu, torch.float32, 0.0, 0.0
     if sm_version == 6.1 or is_16_series:
         return cuda, torch.float32, sm_version, mem_gb
