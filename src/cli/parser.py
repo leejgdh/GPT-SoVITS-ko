@@ -14,7 +14,7 @@ def build_parser() -> argparse.ArgumentParser:
     # 공통 인자 헬퍼
     def _add_common(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("-v", "--verbose", action="store_true", help="Debug logging")
-        sp.add_argument("-c", "--config", default="conf.yaml", help="설정 파일 경로")
+        sp.add_argument("-c", "--config", default="config.yaml", help="설정 파일 경로")
 
     def _add_voice_dir(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")
@@ -134,5 +134,22 @@ def build_parser() -> argparse.ArgumentParser:
     sp_s4.add_argument("--ref-audio", default=None)
     sp_s4.add_argument("--ref-text", default=None)
     sp_s4.add_argument("--ref-lang", default="ko", choices=["ko", "en", "ja"])
+
+    # ── cleanup-voice ──
+    sp_clean = sub.add_parser(
+        "cleanup-voice",
+        help="학습 산출물 정리 — voice.yaml 의 weight/ref_audio 만 보존",
+    )
+    _add_common(sp_clean)
+    _add_voice_dir(sp_clean)
+    sp_clean.add_argument(
+        "--dry-run", action="store_true", help="삭제 대상만 출력 (실제 삭제 안 함)",
+    )
+    sp_clean.add_argument(
+        "--keep-raw", action="store_true", help="raw_audio/ 보존 (재학습 대비)",
+    )
+    sp_clean.add_argument(
+        "--keep-asr", action="store_true", help="step1/04_asr/ 보존 (라벨 검수 결과 재사용)",
+    )
 
     return parser

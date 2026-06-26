@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os
-import signal
-import sys
 
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -13,6 +11,7 @@ _PROJECT_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
 )
 _REVIEW_HTML = os.path.join(_PROJECT_ROOT, "tools", "label-review.html")
+_DEMO_HTML = os.path.join(_PROJECT_ROOT, "tools", "tts-demo.html")
 
 
 @router.get("/health")
@@ -41,11 +40,12 @@ async def review_page():
     return HTMLResponse(content=html)
 
 
-@router.get("/control")
-async def control(command: str = None):
-    if command is None:
-        return JSONResponse(status_code=400, content={"message": "command is required"})
-    if command == "restart":
-        os.execl(sys.executable, sys.executable, *sys.argv)
-    elif command == "exit":
-        os.kill(os.getpid(), signal.SIGTERM)
+@router.get("/demo", response_class=HTMLResponse)
+async def demo_page():
+    """TTS 데모 UI 를 서빙한다. 텍스트 입력 → voice/emotion 선택 → inline 재생."""
+    with open(_DEMO_HTML, encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+
+# /control (restart/exit) 엔드포인트는 인증 게이트가 없어 외부 노출 시 DoS/프로세스
+# 탈취 위험이 있어 제거했다. 재시작/종료는 docker compose 나 systemd 로 관리한다.

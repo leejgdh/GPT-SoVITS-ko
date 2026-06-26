@@ -43,9 +43,21 @@ def merge_short_text_in_array(texts: str, threshold: int) -> list:
     return result
 
 
+# BERT feature 슬롯은 학습된 t2s_model.bert_proj 가 입력으로 요구하지만, 한국어
+# 분기에는 실제 BERT 모델이 없어 항상 zeros 가 들어간다. 매 요청마다 새로 할당하지
+# 않도록 device 별로 1024 × MAX 텐서를 1회 캐싱해 slice 로 반환한다.
+_BERT_FEATURE_DIM = 1024
+_BERT_CACHE_MAX_PHONES = 4096  # 일반 합성 텍스트는 phones < 1000
+
+
 class TextPreprocessor:
     def __init__(self, device: torch.device):
         self.device = device
+        self._bert_zeros = torch.zeros(
+            (_BERT_FEATURE_DIM, _BERT_CACHE_MAX_PHONES),
+            dtype=torch.float32,
+            device=device,
+        )
 
     def preprocess(self, text: str, lang: str, text_split_method: str, version: str = "v2") -> List[Dict]:
         logger.info("텍스트 분할")
@@ -162,11 +174,11 @@ class TextPreprocessor:
         return phones, word2ph, norm_text
 
     def get_bert_inf(self, phones: list, word2ph: list, norm_text: str, language: str):
-        feature = torch.zeros(
-            (1024, len(phones)),
-            dtype=torch.float32,
-        ).to(self.device)
-        return feature
+        n = len(phones)
+        if n <= _BERT_CACHE_MAX_PHONES:
+            return self._bert_zeros[:, :n]
+        # 매우 긴 문장 (fallback) — 캐시 한도 초과 시에만 할당.
+        return torch.zeros((_BERT_FEATURE_DIM, n), dtype=torch.float32, device=self.device)
 
     def filter_text(self, texts):
         _text = []

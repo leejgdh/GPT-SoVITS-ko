@@ -149,7 +149,7 @@
 
   /* 컬럼 너비 */
   .col-idx   { width: 40px; }
-  .col-play  { width: 50px; }
+  .col-play  { width: 80px; }
   .col-wave  { width: 260px; }
   .col-text  { /* flex */ }
   .col-lang  { width: 50px; }
@@ -391,6 +391,8 @@
   <input type="text" id="server-url" value="http://localhost:9880" placeholder="http://localhost:9880">
   <label>Voice</label>
   <select id="voice-select"><option value="">연결 대기...</option></select>
+  <button onclick="document.getElementById('ref-upload-input').click()" style="padding:4px 10px;font-size:12px;cursor:pointer;border:1px solid var(--border);border-radius:4px;background:var(--bg)">레퍼런스 업로드</button>
+  <input type="file" id="ref-upload-input" accept="audio/*" style="display:none" onchange="showUploadDialog(this)">
   <div class="toolbar-right">
     <span class="badge pending"  id="cnt-pending">0</span>
     <span class="badge approved" id="cnt-approved">0</span>
@@ -567,11 +569,12 @@ function renderLabels() {
   body.innerHTML = filtered.map(l => `
     <tr data-idx="${l.index}" data-state="${l.state}">
       <td class="idx">${l.index}</td>
-      <td>
+      <td style="display:flex;gap:4px;align-items:center">
         <button class="play-btn ${playingIndex === l.index ? 'playing' : ''}"
                 onclick="togglePlay(${l.index})" title="재생">
           ${playingIndex === l.index ? '■' : '▶'}
         </button>
+        <button class="play-btn" onclick="downloadAudio(${l.index}, '${escHtml(l.audio_file)}')" title="다운로드" style="font-size:11px">⬇</button>
       </td>
       <td>
         <div class="wave-state-group">
@@ -879,6 +882,67 @@ async function deleteEmotion(name) {
     loadEmotions();
   } catch (e) {
     toast('삭제 실패: ' + (e.detail || ''), 'error');
+  }
+}
+
+// ── 다운로드 ──
+
+function downloadAudio(index, filename) {
+  const url = `${BASE}/voices/${currentVoice}/labels/${index}/audio`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || `label_${index}.flac`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// ── 레퍼런스 업로드 ──
+
+function showUploadDialog(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  if (!currentVoice) {
+    toast('먼저 Voice를 선택하세요.', 'error');
+    return;
+  }
+
+  // 감정 목록에서 선택
+  const emoNames = Object.keys(emotions);
+  const allEmotions = ['default','neutral','thinking','joy','happy','excited','laugh',
+    'blush','embarrassed','nervous','sadness','cry','surprise','dizzy','confused',
+    'anger','disgust','fear'];
+  const options = [...new Set([...emoNames, ...allEmotions])];
+
+  const emotion = prompt(
+    `"${file.name}"을(를) 어떤 감정에 매핑할까요?\n\n` +
+    `사용 가능: ${options.join(', ')}`
+  );
+  if (!emotion || !emotion.trim()) return;
+
+  const refText = prompt('레퍼런스 텍스트 (빈칸 가능):', '') || '';
+
+  uploadRefAudio(file, emotion.trim(), refText);
+}
+
+async function uploadRefAudio(file, emotion, refText) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('ref_text', refText);
+
+  try {
+    const resp = await fetch(
+      `${BASE}/voices/${currentVoice}/emotions/${emotion}/upload`,
+      { method: 'POST', body: formData }
+    );
+    const data = await resp.json();
+    if (!resp.ok) throw { detail: data.message };
+    toast(`${emotion} ← ${file.name} 업로드 완료`);
+    loadEmotions();
+  } catch (e) {
+    toast('업로드 실패: ' + (e.detail || e.message || ''), 'error');
   }
 }
 </script>

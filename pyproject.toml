@@ -10,59 +10,68 @@ dependencies = [
     "loguru",
     "pyyaml",
     "pydantic<=2.10.6",
-    # --- ML Core ---
+    "python-dotenv",
+    "prometheus-client>=0.20",
+    # --- ML Core (추론 필수) ---
     "torch>=2.10",
     "torchaudio>=2.10",
     "numpy>=1.26,<2.0",
     "scipy",
     "librosa==0.10.2",
     "numba",
-    "pytorch-lightning>=2.4",
-    "transformers>=4.43,<=4.50",
-    "peft<0.18.0",
-    "sentencepiece",
-    "rotary_embedding_torch",
-    "x_transformers",
-    "torchmetrics<=1.5",
-    "einops",
+    "pytorch-lightning>=2.4",     # LightningModule 객체로 import
+    "transformers>=4.43,<=4.50",  # CNHubert
+    "torchmetrics<=1.5",          # AR/models/t2s_model
+    "einops",                     # module/core_vq
+    "x_transformers",             # GPT_SoVITS/f5_tts (v3/v4 DiT)
     # --- Audio ---
     "soundfile",
     "ffmpeg-python",
-    "av>=11",
-    "torchcodec",
-    # --- ASR ---
+    # --- Text Processing (다국어 추론용 — auto 모드 진입 가능) ---
+    # 한국어
+    "jamo",
+    "ko_pron",
+    "g2pk2",
+    "python-mecab-ko>=1.3.7",
+    # 일본어
+    "pyopenjtalk>=0.4.1",
+    # 영어
+    "g2p_en",
+    "wordsegment",
+    "inflect",
+    "nltk",
+    # 언어 감지 (LangSegmenter)
+    "jieba",
+    "fast_langdetect>=0.3.1",
+    "split-lang",
+    # --- Misc ---
+    "tqdm",
+]
+
+[project.optional-dependencies]
+# 학습 + 데이터 준비(step1) + ASR + UVR5 + v3/v4 vocoder (LoRA)
+training = [
+    # ASR (step1-ASR)
     "faster-whisper",
     "ctranslate2>=4.0,<5",
+    # FunASR / FRCRN denoise / UVR5 (step1)
     "funasr==1.0.27",
     "modelscope>=1.20",
+    # 학습 데이터
     "datasets>=2.18,<3.0",
     "pandas>=2.2",
-    "addict",
-    "simplejson",
-    "sortedcontainers",
-    "setuptools<81",
-    "chardet",
-    # --- Text Processing ---
-    "cn2an",
-    "pypinyin",
-    "pyopenjtalk>=0.4.1",
-    "g2p_en",
-    "g2pk2",
-    "ko_pron",
-    "jieba_fast",
-    "jieba",
-    "split-lang",
-    "fast_langdetect>=0.3.1",
-    "wordsegment",
-    "opencc",
-    "ToJyutping",
-    # --- Misc ---
-    "psutil",
-    "tqdm",
-    "python-mecab-ko>=1.3.7",
-    "scikit-learn",
+    # 학습 시각화/로깅
     "tensorboard",
-    "onnxruntime-gpu; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "matplotlib>=3.10.8",
+    # LoRA (v3/v4 vocoder + s2_train_cfm_lora)
+    "peft<0.18.0",
+    # UVR5 BS-RoFormer
+    "rotary_embedding_torch",
+]
+
+# Voice Checker (CNN 품질 분류 학습)
+voice-checker = [
+    "scikit-learn",
     "matplotlib>=3.10.8",
 ]
 

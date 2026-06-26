@@ -13,6 +13,8 @@ from pathlib import Path
 from loguru import logger
 
 from src.cli.logger import LOG_DIR, setup_logger
+from src.config.config import find_latest_weight
+from src.config.voice import load_voice_profile
 
 # ---------------------------------------------------------------------------
 # 상수
@@ -45,11 +47,6 @@ def _run(cmd: list[str], label: str) -> None:
         logger.error("<<< {} 실패 (exit={})", label, result.returncode)
         sys.exit(result.returncode)
     logger.info("<<< {} 완료 ({:.0f}초)", label, elapsed)
-
-
-def _find_latest(directory: str, pattern: str) -> str | None:
-    files = glob.glob(os.path.join(directory, pattern))
-    return max(files, key=os.path.getmtime) if files else None
 
 
 def _find_ref_audio(voice_dir: str) -> str | None:
@@ -85,8 +82,8 @@ def _save_voice_yaml(
     from src.config.voice import save_voice_yaml
 
     step3 = os.path.join(voice_dir, "step3", version)
-    gpt_weights = _find_latest(os.path.join(step3, "02_gpt_weights"), "*.ckpt")
-    sovits_weights = _find_latest(os.path.join(step3, "04_sovits_weights"), "*.pth")
+    gpt_weights = find_latest_weight(os.path.join(step3, "02_gpt_weights"), "*.ckpt")
+    sovits_weights = find_latest_weight(os.path.join(step3, "04_sovits_weights"), "*.pth")
 
     if gpt_weights is None or sovits_weights is None:
         logger.warning("가중치를 찾을 수 없어 voice.yaml을 생성하지 않습니다")
@@ -109,6 +106,205 @@ def _clean_step_dir(voice_dir: str, step: str, version: str, label: str) -> None
     if os.path.exists(step_dir):
         logger.info("기존 {} 결과 삭제: {}", label, step_dir)
         shutil.rmtree(step_dir)
+
+
+# ---------------------------------------------------------------------------
+# 학습 산출물 정리
+# ---------------------------------------------------------------------------
+
+
+def _dir_size_bytes(path: str) -> int:
+    """디렉토리/파일의 총 크기 (bytes). 접근 실패는 0 으로 처리."""
+    if os.path.isfile(path):
+        try:
+            return os.path.getsize(path)
+        except OSError:
+            return 0
+    total = 0
+    for root, _, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.path.getsize(os.path.join(root, f))
+            except OSError:
+                continue
+    return total
+
+
+def _human_size(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+def _collect_preserve_paths(voice_dir: str) -> set[str]:
+    """voice.yaml 에서 보존해야 할 절대경로를 모은다 (가중치 + emotion ref_audio)."""
+    profile = load_voice_profile(voice_dir)
+    if profile is None:
+        logger.error("voice.yaml 이 없어 정리 기준을 정할 수 없습니다: {}", voice_dir)
+        sys.exit(1)
+
+    paths: set[str] = set()
+    if profile.gpt_weights:
+        paths.add(os.path.abspath(profile.gpt_weights))
+    if profile.sovits_weights:
+        paths.add(os.path.abspath(profile.sovits_weights))
+    for emo in profile.emotions.values():
+        if emo.ref_audio:
+            paths.add(os.path.abspath(emo.ref_audio))
+    return paths
+
+
+def _has_preserved_inside(dir_abs: str, preserve: set[str]) -> bool:
+    """dir_abs 하위에 preserve 안의 파일이 하나라도 있으면 True."""
+    prefix = dir_abs + os.sep
+    return any(keep.startswith(prefix) for keep in preserve)
+
+
+def _collect_files_excluding_preserved(
+    dir_abs: str, preserve: set[str], targets: list[str],
+) -> None:
+    """dir_abs 하위 모든 파일 중 preserve 가 아닌 것만 targets 에 추가."""
+    for root, _, files in os.walk(dir_abs):
+        for f in files:
+            fp = os.path.join(root, f)
+            if os.path.abspath(fp) not in preserve:
+                targets.append(fp)
+
+
+def _walk_cleanup_targets(
+    voice_dir: str,
+    preserve: set[str],
+    *,
+    keep_raw: bool,
+    keep_asr: bool,
+) -> list[str]:
+    """삭제 대상 절대경로 리스트.
+
+    학습 산출물 (step1/step2/step3) 과 학습 로그 (logs_s1/logs_s2), 그리고 raw_audio
+    를 훑고, preserve 에 속하지 않는 파일만 모은다. 빈 디렉토리는 _prune_empty_dirs
+    에서 정리한다.
+
+    각 후보 디렉토리는 preserve 가 그 안을 가리키면 file-level, 아니면 디렉토리
+    통째로 추가 — 디렉토리 통째가 더 빠르고 단순.
+    """
+    targets: list[str] = []
+    voice_abs = os.path.abspath(voice_dir)
+
+    candidates: list[str] = ["step1", "step2", "step3", "logs_s1", "logs_s2"]
+    if not keep_raw:
+        candidates.append("raw_audio")
+
+    for sub in candidates:
+        full = os.path.join(voice_abs, sub)
+        if not os.path.exists(full):
+            continue
+
+        # step1/04_asr 보존 옵션 — step1 자체는 통째 삭제 못 함
+        if sub == "step1" and keep_asr:
+            for entry in sorted(os.listdir(full)):
+                entry_path = os.path.join(full, entry)
+                if entry == "04_asr":
+                    continue
+                if os.path.isfile(entry_path):
+                    if os.path.abspath(entry_path) not in preserve:
+                        targets.append(entry_path)
+                elif _has_preserved_inside(os.path.abspath(entry_path), preserve):
+                    _collect_files_excluding_preserved(entry_path, preserve, targets)
+                else:
+                    targets.append(entry_path)
+            continue
+
+        # preserve 가 이 안을 가리키면 file-level, 아니면 디렉토리 통째
+        if _has_preserved_inside(os.path.abspath(full), preserve):
+            _collect_files_excluding_preserved(full, preserve, targets)
+        else:
+            targets.append(full)
+
+    return targets
+
+
+def _prune_empty_dirs(voice_dir: str) -> None:
+    """voice_dir 하위의 빈 디렉토리를 bottom-up 으로 제거. voice_dir 자체는 유지."""
+    voice_abs = os.path.abspath(voice_dir)
+    for root, dirs, files in os.walk(voice_abs, topdown=False):
+        if os.path.abspath(root) == voice_abs:
+            continue
+        if not dirs and not files:
+            try:
+                os.rmdir(root)
+            except OSError:
+                pass
+
+
+def run_cleanup_voice(
+    voice_dir: str,
+    *,
+    dry_run: bool = False,
+    keep_raw: bool = False,
+    keep_asr: bool = False,
+) -> None:
+    """학습 산출물을 정리한다. voice.yaml 의 weight/ref_audio 만 보존.
+
+    삭제 대상:
+      - step2/, step3/ (단, step3 내부의 weight 파일은 보존)
+      - logs_s1/, logs_s2/
+      - step1/01_denoise, 02_sliced, 03_vocal, 04_asr (단, ref_audio 는 보존)
+      - raw_audio/ (--keep-raw 옵션 시 보존)
+
+    --keep-asr 시 step1/04_asr 은 보존 (라벨 검수 결과 재사용).
+    --dry-run 시 삭제 대상만 출력하고 실제 제거는 안 함.
+    """
+    if not os.path.isdir(voice_dir):
+        logger.error("voice 디렉토리가 존재하지 않습니다: {}", voice_dir)
+        sys.exit(1)
+
+    preserve = _collect_preserve_paths(voice_dir)
+    logger.info("보존 대상 ({} 개):", len(preserve))
+    for p in sorted(preserve):
+        marker = "" if os.path.exists(p) else " (MISSING)"
+        logger.info("  · {}{}", p, marker)
+
+    targets = _walk_cleanup_targets(
+        voice_dir, preserve, keep_raw=keep_raw, keep_asr=keep_asr,
+    )
+
+    # 디렉토리 → 그 안의 파일 중복 제거 (디렉토리가 통째 삭제 대상이면 하위 파일은 표시 생략)
+    dir_targets = {t for t in targets if os.path.isdir(t)}
+    deduped: list[str] = []
+    for t in targets:
+        if os.path.isfile(t) and any(
+            t.startswith(d + os.sep) for d in dir_targets
+        ):
+            continue
+        deduped.append(t)
+
+    total = sum(_dir_size_bytes(t) for t in deduped)
+    logger.info("삭제 대상 ({} 개, 총 {}):", len(deduped), _human_size(total))
+    for t in sorted(deduped):
+        size = _human_size(_dir_size_bytes(t))
+        logger.info("  · {} ({})", t, size)
+
+    if dry_run:
+        logger.info("--dry-run — 실제 삭제는 수행하지 않습니다")
+        return
+
+    if not deduped:
+        logger.info("삭제 대상 없음 — 이미 깨끗합니다")
+        return
+
+    for t in deduped:
+        try:
+            if os.path.isdir(t):
+                shutil.rmtree(t)
+            elif os.path.exists(t):
+                os.remove(t)
+        except OSError as exc:
+            logger.warning("삭제 실패 ({}): {}", t, exc)
+
+    _prune_empty_dirs(voice_dir)
+    logger.info("정리 완료 — 해제: {}", _human_size(total))
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +351,7 @@ def run_asr(voice_dir: str) -> None:
           "--voice-dir", voice_dir], "asr")
 
 
-def run_classify(voice_dir: str, config_path: str = "conf.yaml") -> None:
+def run_classify(voice_dir: str, config_path: str = "config.yaml") -> None:
     """vocal.list의 pending 상태를 Voice Checker CNN으로 재분류한다."""
     from src.config.config import VoiceCheckerConfig, load_config
 
@@ -219,22 +415,22 @@ def run_classify(voice_dir: str, config_path: str = "conf.yaml") -> None:
 
 
 def run_get_text(voice_dir: str, version: str) -> None:
-    _run([sys.executable, "scripts/preprocessing/1-get-text.py",
+    _run([sys.executable, "scripts/preprocessing/get_text.py",
           "--voice-dir", voice_dir, "--version", version], "get-text")
 
 
 def run_get_hubert(voice_dir: str, version: str) -> None:
-    _run([sys.executable, "scripts/preprocessing/2-get-hubert-wav32k.py",
+    _run([sys.executable, "scripts/preprocessing/get_hubert_wav32k.py",
           "--voice-dir", voice_dir, "--version", version], "get-hubert")
 
 
 def run_get_sv(voice_dir: str, version: str) -> None:
-    _run([sys.executable, "scripts/preprocessing/2-get-sv.py",
+    _run([sys.executable, "scripts/preprocessing/get_sv.py",
           "--voice-dir", voice_dir, "--version", version], "get-sv")
 
 
 def run_get_semantic(voice_dir: str, version: str) -> None:
-    _run([sys.executable, "scripts/preprocessing/3-get-semantic.py",
+    _run([sys.executable, "scripts/preprocessing/get_semantic.py",
           "--voice-dir", voice_dir, "--version", version], "get-semantic")
 
 
@@ -270,7 +466,7 @@ def run_train_sovits(
 # ---------------------------------------------------------------------------
 
 
-def run_step1(voice_dir: str, config_path: str = "conf.yaml") -> None:
+def run_step1(voice_dir: str, config_path: str = "config.yaml") -> None:
     _ensure_voice_yaml(voice_dir)
     run_denoise(voice_dir)
     run_slice(voice_dir)
@@ -446,9 +642,25 @@ def cmd_step4(args: argparse.Namespace) -> None:
     logger.info(
         "[완료] voice.yaml이 생성되었습니다.\n"
         "  합성 테스트: curl -X POST http://localhost:9880/tts -H 'Content-Type: application/json' "
-        "-d '{{\"voice\": \"{}\", \"text\": \"테스트\", \"text_lang\": \"ko\"}}' --output test.wav",
-        voice_name,
+        "-d '{{\"voice\": \"{}\", \"text\": \"테스트\", \"text_lang\": \"ko\"}}' --output test.wav\n"
+        "  음질 확인 후 학습 산출물 정리 (선택):\n"
+        "    python main.py cleanup-voice --voice-dir {} --dry-run    # 삭제 대상 미리보기\n"
+        "    python main.py cleanup-voice --voice-dir {}              # 실제 정리",
+        voice_name, args.voice_dir, args.voice_dir,
     )
+
+
+def cmd_cleanup_voice(args: argparse.Namespace) -> None:
+    setup_logger("cleanup-voice", level="DEBUG" if args.verbose else "INFO")
+    logger.info("=== Cleanup 시작: {} ===", args.voice_dir)
+    t0 = time.time()
+    run_cleanup_voice(
+        args.voice_dir,
+        dry_run=args.dry_run,
+        keep_raw=args.keep_raw,
+        keep_asr=args.keep_asr,
+    )
+    logger.info("=== Cleanup 완료 ({:.0f}초) ===", time.time() - t0)
 
 
 def cmd_pipeline(args: argparse.Namespace) -> None:
@@ -475,3 +687,10 @@ def cmd_pipeline(args: argparse.Namespace) -> None:
 
     total_elapsed = time.time() - total_start
     logger.info("=== 파이프라인 완료 ({:.0f}초) ===", total_elapsed)
+    logger.info(
+        "[안내] 음질 확인 후 학습 산출물 정리 가능:\n"
+        "  python main.py cleanup-voice --voice-dir {} --dry-run    # 삭제 대상 미리보기\n"
+        "  python main.py cleanup-voice --voice-dir {}              # 실제 정리\n"
+        "  옵션: --keep-raw (raw_audio 보존) / --keep-asr (라벨 검수 결과 보존)",
+        voice_dir, voice_dir,
+    )

@@ -1,27 +1,34 @@
+"""tts-service 설정 모델 + 디바이스 감지 helper.
+
+pydantic v2 BaseModel 기반 — VCAugmentationConfig.enabled 등 bool 필드의 env
+치환 함정 (``bool("false") == True``) 을 BoolValidator 가 자동 해결.
+"""
+
 from __future__ import annotations
 
 import glob
 import os
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
 import yaml
 from loguru import logger
+from pydantic import BaseModel, Field, ValidationError
+
+from src.exceptions import ConfigError
 
 # ---------------------------------------------------------------------------
-# Dataclass 설정
+# BaseModel 설정
 # ---------------------------------------------------------------------------
 
-@dataclass
-class ServiceConfig:
+
+class ServiceConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 9880
 
 
-@dataclass
-class VCAudioConfig:
+class VCAudioConfig(BaseModel):
     sample_rate: int = 44100
     n_mels: int = 64
     n_fft: int = 1024
@@ -29,52 +36,50 @@ class VCAudioConfig:
     target_length: int = 128
 
 
-@dataclass
-class VCTrainingConfig:
-    batch_size: int = 16
-    epochs: int = 50
-    learning_rate: float = 0.001
-    weight_decay: float = 0.0001
-    val_ratio: float = 0.2
-    early_stop_patience: int = 10
+class VCTrainingConfig(BaseModel):
+    batch_size: int = Field(default=16, gt=0)
+    epochs: int = Field(default=50, gt=0)
+    learning_rate: float = Field(default=0.001, gt=0.0)
+    weight_decay: float = Field(default=0.0001, ge=0.0)
+    val_ratio: float = Field(default=0.2, ge=0.0, lt=1.0)
+    early_stop_patience: int = Field(default=10, ge=0)
     seed: int = 42
 
 
-@dataclass
-class VCAugmentationConfig:
+class VCAugmentationConfig(BaseModel):
     enabled: bool = True
-    time_mask_param: int = 10
-    freq_mask_param: int = 5
-    noise_std: float = 0.005
-    minority_oversample: int = 5
+    time_mask_param: int = Field(default=10, ge=0)
+    freq_mask_param: int = Field(default=5, ge=0)
+    noise_std: float = Field(default=0.005, ge=0.0)
+    minority_oversample: int = Field(default=5, ge=0)
 
 
-@dataclass
-class VCInferenceConfig:
+class VCInferenceConfig(BaseModel):
     model_path: str = "data/voice-checker/models/best_model.pth"
-    threshold: float = 0.5
+    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
-@dataclass
-class VoiceCheckerConfig:
-    """Voice Checker 설정. conf.yaml에 voice_checker 섹션이 있으면 활성화."""
-    audio: VCAudioConfig = field(default_factory=VCAudioConfig)
-    training: VCTrainingConfig = field(default_factory=VCTrainingConfig)
-    augmentation: VCAugmentationConfig = field(default_factory=VCAugmentationConfig)
-    inference: VCInferenceConfig = field(default_factory=VCInferenceConfig)
+class VoiceCheckerConfig(BaseModel):
+    """Voice Checker 설정. config.yaml에 voice_checker 섹션이 있으면 활성화."""
+
+    audio: VCAudioConfig = Field(default_factory=VCAudioConfig)
+    training: VCTrainingConfig = Field(default_factory=VCTrainingConfig)
+    augmentation: VCAugmentationConfig = Field(default_factory=VCAugmentationConfig)
+    inference: VCInferenceConfig = Field(default_factory=VCInferenceConfig)
 
 
-@dataclass
-class Config:
-    service: ServiceConfig = field(default_factory=ServiceConfig)
-    tts: dict = field(default_factory=dict)
+class Config(BaseModel):
+    service: ServiceConfig = Field(default_factory=ServiceConfig)
+    # tts 는 GPT-SoVITS 원본의 자유 dict — version / device / custom 등 양식 다양.
+    # BaseModel 로 묶기엔 키 집합이 너무 가변적이라 raw dict 유지.
+    tts: dict = Field(default_factory=dict)
     voices_dir: str = "data/voice"
     default_voice: str | None = None
     log_level: str = "INFO"
     voice_checker: VoiceCheckerConfig | None = None
 
 
-def _find_latest(directory: str, pattern: str) -> str | None:
+def find_latest_weight(directory: str, pattern: str) -> str | None:
     """디렉토리에서 가장 최근 수정된 파일을 찾는다."""
     files = glob.glob(os.path.join(directory, pattern))
     return max(files, key=os.path.getmtime) if files else None
@@ -90,49 +95,39 @@ def _resolve_voice_dir(custom: dict) -> None:
     step3 = os.path.join(voice_dir, "step3", version)
 
     if "t2s_weights_path" not in custom:
-        gpt_path = _find_latest(os.path.join(step3, "02_gpt_weights"), "*.ckpt")
+        gpt_path = find_latest_weight(os.path.join(step3, "02_gpt_weights"), "*.ckpt")
         if gpt_path:
             custom["t2s_weights_path"] = gpt_path
             logger.info("GPT 가중치 자동 탐색: {}", gpt_path)
 
     if "vits_weights_path" not in custom:
-        sovits_path = _find_latest(os.path.join(step3, "04_sovits_weights"), "*.pth")
+        sovits_path = find_latest_weight(os.path.join(step3, "04_sovits_weights"), "*.pth")
         if sovits_path:
             custom["vits_weights_path"] = sovits_path
             logger.info("SoVITS 가중치 자동 탐색: {}", sovits_path)
 
 
 def load_config(path: Path) -> Config:
+    """yaml 파일 한 번 ``Config.model_validate`` 로 전체 변환.
+
+    tts dict 는 GPT-SoVITS 원본의 free-form 양식이라 BaseModel 로 묶지 않고
+    그대로 dict 유지 — 그 안의 키 (custom / version / weights 등) 는 free-form
+    영역이므로 dict 접근 양식 OK.
+    """
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
 
-    svc = data.get("service", {})
-    tts = data.get("tts", {})
+    try:
+        cfg = Config.model_validate(data)
+    except ValidationError as e:
+        raise ConfigError(f"설정 검증 실패: {e}") from e
 
-    if "custom" in tts:
-        _resolve_voice_dir(tts["custom"])
+    # tts.custom.voice_dir 자동 탐색 — tts 는 free-form 양식이라 dict 접근 영역.
+    custom = cfg.tts.get("custom")
+    if isinstance(custom, dict):
+        _resolve_voice_dir(custom)
 
-    vc_data = data.get("voice_checker")
-    vc_config = None
-    if vc_data is not None:
-        vc_config = VoiceCheckerConfig(
-            audio=VCAudioConfig(**vc_data["audio"]) if "audio" in vc_data else VCAudioConfig(),
-            training=VCTrainingConfig(**vc_data["training"]) if "training" in vc_data else VCTrainingConfig(),
-            augmentation=VCAugmentationConfig(**vc_data["augmentation"]) if "augmentation" in vc_data else VCAugmentationConfig(),
-            inference=VCInferenceConfig(**vc_data["inference"]) if "inference" in vc_data else VCInferenceConfig(),
-        )
-
-    return Config(
-        service=ServiceConfig(
-            host=svc.get("host", "0.0.0.0"),
-            port=svc.get("port", 9880),
-        ),
-        tts=tts,
-        voices_dir=data.get("voices_dir", "data/voice"),
-        default_voice=data.get("default_voice"),
-        log_level=data.get("log_level", "INFO"),
-        voice_checker=vc_config,
-    )
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +157,7 @@ pretrained_gpt_name: dict[str, str] = {
 # GPU / Device 감지
 # ---------------------------------------------------------------------------
 
+
 def get_device_dtype_sm(idx: int) -> tuple[torch.device, torch.dtype, float, float]:
     cpu = torch.device("cpu")
     cuda = torch.device(f"cuda:{idx}")
@@ -174,7 +170,10 @@ def get_device_dtype_sm(idx: int) -> tuple[torch.device, torch.dtype, float, flo
     major, minor = capability
     sm_version = major + minor / 10.0
     is_16_series = bool(re.search(r"16\d{2}", name)) and sm_version == 7.5
-    if mem_gb < 4 or sm_version < 5.3:
+    # sm_version 가드만 유지 — Maxwell 이전 (sm < 5.3) 은 float 연산 자체가
+    # 불안정. VRAM 사이즈 가드는 제거 — 작은 GPU 도 시도 가능 (모델 로드 시점에
+    # OOM 으로 떨어지더라도 정책적 차단 X).
+    if sm_version < 5.3:
         return cpu, torch.float32, 0.0, 0.0
     if sm_version == 6.1 or is_16_series:
         return cuda, torch.float32, sm_version, mem_gb
@@ -196,5 +195,3 @@ def detect_half() -> bool:
     gpu_count = torch.cuda.device_count()
     results = [get_device_dtype_sm(i) for i in range(max(gpu_count, 1))]
     return any(dtype == torch.float16 for _, dtype, _, _ in results)
-
-

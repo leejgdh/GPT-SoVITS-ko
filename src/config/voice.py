@@ -1,7 +1,7 @@
 """Voice 프로필 관리.
 
 voice.yaml 스키마:
-  name: lunabi
+  name: dahwi
   version: v2Pro
   ref_lang: ko
   gpt_weights: step3/v2Pro/02_gpt_weights/model.ckpt
@@ -55,16 +55,6 @@ class VoiceProfile:
         if "default" in self.emotions:
             return self.emotions["default"]
         return next(iter(self.emotions.values()))
-
-    @property
-    def ref_audio(self) -> str:
-        """하위 호환용 — default 감정의 ref_audio."""
-        return self.get_emotion().ref_audio
-
-    @property
-    def ref_text(self) -> str:
-        """하위 호환용 — default 감정의 ref_text."""
-        return self.get_emotion().ref_text
 
     @property
     def emotion_names(self) -> list[str]:
@@ -151,22 +141,27 @@ def save_voice_yaml(
     *,
     name: str,
     version: str,
-    ref_audio: str,
-    ref_text: str,
     ref_lang: str,
     gpt_weights: str,
     sovits_weights: str,
     emotions: dict[str, dict[str, str]] | None = None,
+    ref_audio: str | None = None,
+    ref_text: str | None = None,
 ) -> str:
     """voice.yaml을 생성한다. 경로는 voice_dir 기준 상대경로로 저장.
+
+    `emotions` 가 비어있으면 `ref_audio`/`ref_text` 로 default 감정을 생성한다
+    (step4 의 첫 생성 경로). 이미 emotions dict 를 들고 있는 호출자는 그것만
+    넘기면 된다.
 
     Returns:
         생성된 voice.yaml의 절대경로.
     """
     yaml_path = os.path.join(voice_dir, _VOICE_YAML)
 
-    # emotions가 없으면 ref_audio/ref_text로 default 생성
     if not emotions:
+        if ref_audio is None or ref_text is None:
+            raise ValueError("emotions 가 비어있으면 ref_audio/ref_text 가 필요합니다")
         emotions = {
             "default": {
                 "ref_audio": os.path.relpath(ref_audio, voice_dir),

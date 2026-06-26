@@ -192,7 +192,7 @@ def _cmd_serve(args: argparse.Namespace) -> None:
 
 
 def _load_vc_config(config_path: Path):
-    """루트 conf.yaml에서 voice_checker 설정을 로드한다."""
+    """루트 config.yaml에서 voice_checker 설정을 로드한다."""
     from src.config.config import VoiceCheckerConfig, load_config as load_root_config
 
     if not config_path.exists():
@@ -295,21 +295,21 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- serve ---
     sp_serve = sub.add_parser("serve", help="라벨링 UI 서버 실행")
     sp_serve.add_argument("-v", "--verbose", action="store_true")
-    sp_serve.add_argument("-c", "--config", default="conf.yaml")
+    sp_serve.add_argument("-c", "--config", default="config.yaml")
     sp_serve.add_argument("--host", default=None)
     sp_serve.add_argument("--port", type=int, default=None)
 
     # --- train ---
     sp_train = sub.add_parser("train", help="CNN 모델 학습")
     sp_train.add_argument("-v", "--verbose", action="store_true")
-    sp_train.add_argument("-c", "--config", default="conf.yaml")
+    sp_train.add_argument("-c", "--config", default="config.yaml")
     sp_train.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더 (예: data/voice/lunabi)")
 
     # --- predict ---
     sp_predict = sub.add_parser("predict", help="오디오 품질 예측")
     sp_predict.add_argument("input", help="오디오 파일 또는 폴더 경로")
     sp_predict.add_argument("-v", "--verbose", action="store_true")
-    sp_predict.add_argument("-c", "--config", default="conf.yaml")
+    sp_predict.add_argument("-c", "--config", default="config.yaml")
     sp_predict.add_argument("-m", "--model", default=None, help="모델 파일 경로")
     sp_predict.add_argument("-t", "--threshold", type=float, default=None, help="분류 임계값")
 

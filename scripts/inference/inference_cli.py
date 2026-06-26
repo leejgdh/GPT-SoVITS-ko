@@ -19,7 +19,6 @@ gradio 의존성 없이 독립 실행 가능.
 from __future__ import annotations
 
 import argparse
-import glob
 import os
 import sys
 
@@ -35,6 +34,7 @@ import yaml
 from loguru import logger
 
 from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
+from src.config.config import find_latest_weight
 
 
 def _parse_args() -> argparse.Namespace:
@@ -70,14 +70,6 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _find_latest_weights(directory: str, pattern: str) -> str | None:
-    """디렉토리에서 가장 최근 수정된 가중치 파일을 찾는다."""
-    files = glob.glob(os.path.join(directory, pattern))
-    if not files:
-        return None
-    return max(files, key=os.path.getmtime)
-
-
 def _resolve_voice_dir(args: argparse.Namespace) -> None:
     """--voice-dir에서 가중치 경로와 출력 경로를 자동 설정한다."""
     voice_dir = args.voice_dir
@@ -85,7 +77,7 @@ def _resolve_voice_dir(args: argparse.Namespace) -> None:
 
     if args.gpt_weights is None:
         gpt_dir = os.path.join(step3, "02_gpt_weights")
-        gpt_path = _find_latest_weights(gpt_dir, "*.ckpt")
+        gpt_path = find_latest_weight(gpt_dir, "*.ckpt")
         if gpt_path is None:
             logger.error("GPT 가중치를 찾을 수 없습니다: {}", gpt_dir)
             sys.exit(1)
@@ -94,7 +86,7 @@ def _resolve_voice_dir(args: argparse.Namespace) -> None:
 
     if args.sovits_weights is None:
         sovits_dir = os.path.join(step3, "04_sovits_weights")
-        sovits_path = _find_latest_weights(sovits_dir, "*.pth")
+        sovits_path = find_latest_weight(sovits_dir, "*.pth")
         if sovits_path is None:
             logger.error("SoVITS 가중치를 찾을 수 없습니다: {}", sovits_dir)
             sys.exit(1)

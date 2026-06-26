@@ -1,213 +1,156 @@
+"""ko/ja/en + 숫자 언어 분할.
+
+split_lang 으로 1차 분할 → 카테고리 충돌이 잦은 ja/ko 구간만 정규식으로 재분할 후
+동일 언어를 병합한다. 중국어/번체 분기는 제거됐다 — cleaner.py 도 ja/en/ko 만 지원.
+"""
 import logging
 import re
+from pathlib import Path
 
-# jieba 경고 무시
+# split_lang 이 jieba 를 transitive 로 사용 — 경고만 무음 처리하고 직접 호출은 없음.
 import jieba
+
 jieba.setLogLevel(logging.CRITICAL)
 
-# fast_langdetect 모델 위치 변경
-from pathlib import Path
 import fast_langdetect
-fast_langdetect.infer._default_detector = fast_langdetect.infer.LangDetector(fast_langdetect.infer.LangDetectConfig(cache_dir=Path(__file__).parent.parent.parent / "pretrained_models" / "fast_langdetect"))
-
-
 from split_lang import LangSplitter
 
-
-def full_en(text):
-    pattern = r'^(?=.*[A-Za-z])[A-Za-z0-9\s\u0020-\u007E\u2000-\u206F\u3000-\u303F\uFF00-\uFFEF]+$'
-    return bool(re.match(pattern, text))
-
-
-def full_cjk(text):
-    # 위키 출처
-    cjk_ranges = [
-        (0x4E00, 0x9FFF),        # CJK Unified Ideographs
-        (0x3400, 0x4DB5),        # CJK Extension A
-        (0x20000, 0x2A6DD),      # CJK Extension B
-        (0x2A700, 0x2B73F),      # CJK Extension C
-        (0x2B740, 0x2B81F),      # CJK Extension D
-        (0x2B820, 0x2CEAF),      # CJK Extension E
-        (0x2CEB0, 0x2EBEF),      # CJK Extension F
-        (0x30000, 0x3134A),      # CJK Extension G
-        (0x31350, 0x323AF),      # CJK Extension H
-        (0x2EBF0, 0x2EE5D),      # CJK Extension H
-    ]
-
-    pattern = r'[0-9、-〜。！？.!?… /]+$'
-
-    cjk_text = ""
-    for char in text:
-        code_point = ord(char)
-        in_cjk = any(start <= code_point <= end for start, end in cjk_ranges)
-        if in_cjk or re.match(pattern, char):
-            cjk_text += char
-    return cjk_text
+# fast_langdetect 모델 캐시 위치를 프로젝트 내부로 고정.
+_fast_langdetect_cache = Path(__file__).parent.parent.parent / "pretrained_models" / "fast_langdetect"
+_fast_langdetect_cache.mkdir(parents=True, exist_ok=True)
+fast_langdetect.infer._default_detector = fast_langdetect.infer.LangDetector(
+    fast_langdetect.infer.LangDetectConfig(cache_dir=_fast_langdetect_cache)
+)
 
 
-def split_jako(tag_lang,item):
-    if tag_lang == "ja":
-        pattern = r"([\u3041-\u3096\u3099\u309A\u30A1-\u30FA\u30FC]+(?:[0-9、-〜。！？.!?… ]+[\u3041-\u3096\u3099\u309A\u30A1-\u30FA\u30FC]*)*)"
-    else:
-        pattern = r"([\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]+(?:[0-9、-〜。！？.!?… ]+[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]*)*)"
+_FULL_EN_PATTERN = re.compile(
+    r"^(?=.*[A-Za-z])[A-Za-z0-9\s -~ -⁯　-〿＀-￯]+$"
+)
+_JA_PATTERN = re.compile(
+    r"([ぁ-ゖ゙゚ァ-ヺー]+"
+    r"(?:[0-9、-〜。！？.!?… ]+[ぁ-ゖ゙゚ァ-ヺー]*)*)"
+)
+_KO_PATTERN = re.compile(
+    r"([ᄀ-ᇿ㄰-㆏가-힯]+"
+    r"(?:[0-9、-〜。！？.!?… ]+[ᄀ-ᇿ㄰-㆏가-힯]*)*)"
+)
+_PUNCT = {",", ".", "!", "?", "，", "。", "！", "？"}
 
+
+def _is_full_en(text: str) -> bool:
+    return bool(_FULL_EN_PATTERN.match(text))
+
+
+def _split_by_pattern(tag_lang: str, item: dict, pattern: re.Pattern) -> list[dict]:
+    """item.text 안에서 pattern 매칭 구간을 tag_lang 으로 잘라낸다."""
     lang_list: list[dict] = []
     tag = 0
-    for match in re.finditer(pattern, item['text']):
+    for match in pattern.finditer(item["text"]):
         if match.start() > tag:
-            lang_list.append({'lang':item['lang'],'text':item['text'][tag:match.start()]})
-
+            lang_list.append({"lang": item["lang"], "text": item["text"][tag : match.start()]})
         tag = match.end()
-        lang_list.append({'lang':tag_lang,'text':item['text'][match.start():match.end()]})
-
-    if tag < len(item['text']):
-        lang_list.append({'lang':item['lang'],'text':item['text'][tag:len(item['text'])]})
-
+        lang_list.append({"lang": tag_lang, "text": item["text"][match.start() : match.end()]})
+    if tag < len(item["text"]):
+        lang_list.append({"lang": item["lang"], "text": item["text"][tag:]})
     return lang_list
 
 
-def merge_lang(lang_list, item):
-    if lang_list and item['lang'] == lang_list[-1]['lang']:
-        lang_list[-1]['text'] += item['text']
+def _merge_lang(lang_list: list[dict], item: dict) -> list[dict]:
+    if lang_list and item["lang"] == lang_list[-1]["lang"]:
+        lang_list[-1]["text"] += item["text"]
     else:
         lang_list.append(item)
     return lang_list
 
 
-class LangSegmenter():
-    # 기본 필터, GSV 지원 언어 기반
+class LangSegmenter:
+    # GSV 가 지원하는 언어 = ko / ja / en (+ digit).
     DEFAULT_LANG_MAP = {
-        "zh": "zh",
-        "yue": "zh",  # 광둥어
-        "wuu": "zh",  # 오어(吳語)
-        "zh-cn": "zh",
-        "zh-tw": "x",  # 번체는 x로 설정
         "ko": "ko",
         "ja": "ja",
         "en": "en",
     }
 
-    def getTexts(text,default_lang = ""):
+    @staticmethod
+    def getTexts(text: str, default_lang: str = "") -> list[dict]:
         lang_splitter = LangSplitter(lang_map=LangSegmenter.DEFAULT_LANG_MAP)
         lang_splitter.merge_across_digit = False
         substr = lang_splitter.split_by_lang(text=text)
 
         lang_list: list[dict] = []
-
         have_num = False
 
-        for _, item in enumerate(substr):
-            dict_item = {'lang':item.lang,'text':item.text}
+        for item in substr:
+            dict_item = {"lang": item.lang, "text": item.text}
 
-            if dict_item['lang'] == 'digit':
-                if default_lang != "":
-                    dict_item['lang'] = default_lang
+            if dict_item["lang"] == "digit":
+                if default_lang:
+                    dict_item["lang"] = default_lang
                 else:
                     have_num = True
-                lang_list = merge_lang(lang_list,dict_item)
+                lang_list = _merge_lang(lang_list, dict_item)
                 continue
 
-            # 짧은 영문이 다른 언어로 인식되는 문제 처리
-            if full_en(dict_item['text']):  
-                dict_item['lang'] = 'en'
-                lang_list = merge_lang(lang_list,dict_item)
+            # 짧은 영문이 다른 언어로 잘못 인식되는 경우 보정.
+            if _is_full_en(dict_item["text"]):
+                dict_item["lang"] = "en"
+                lang_list = _merge_lang(lang_list, dict_item)
                 continue
 
-            if default_lang != "":
-                dict_item['lang'] = default_lang
-                lang_list = merge_lang(lang_list,dict_item)
+            if default_lang:
+                dict_item["lang"] = default_lang
+                lang_list = _merge_lang(lang_list, dict_item)
                 continue
-            else:
-                # 비일본어에 일본어가 섞인 경우 처리 (CJK 미포함)
-                ja_list: list[dict] = []
-                if dict_item['lang'] != 'ja':
-                    ja_list = split_jako('ja',dict_item)
 
-                if not ja_list:
-                    ja_list.append(dict_item)
+            # default_lang 미지정: 일본어/한국어가 다른 카테고리로 잡힌 경우 재분할.
+            ja_list = _split_by_pattern("ja", dict_item, _JA_PATTERN) if dict_item["lang"] != "ja" else []
+            if not ja_list:
+                ja_list = [dict_item]
 
-                # 비한국어에 한국어가 섞인 경우 처리 (CJK 미포함)
-                ko_list: list[dict] = []
-                temp_list: list[dict] = []
-                for _, ko_item in enumerate(ja_list):
-                    if ko_item["lang"] != 'ko':
-                        ko_list = split_jako('ko',ko_item)
+            temp_list: list[dict] = []
+            for ko_item in ja_list:
+                ko_list = _split_by_pattern("ko", ko_item, _KO_PATTERN) if ko_item["lang"] != "ko" else []
+                if ko_list:
+                    temp_list.extend(ko_list)
+                else:
+                    temp_list.append(ko_item)
 
-                    if ko_list:
-                        temp_list.extend(ko_list)
-                    else:
-                        temp_list.append(ko_item)
+            for temp_item in temp_list:
+                # 미식별 카테고리는 직전 lang 으로 흡수 (없으면 en).
+                if temp_item["lang"] == "x":
+                    temp_item["lang"] = lang_list[-1]["lang"] if lang_list else "en"
+                lang_list = _merge_lang(lang_list, temp_item)
 
-                # 비일본어/한국어에 일본어/한국어 미포함
-                if len(temp_list) == 1:
-                    # 미식별 언어의 CJK 여부 확인
-                    if dict_item['lang'] == 'x':
-                        cjk_text = full_cjk(dict_item['text'])
-                        if cjk_text:
-                            dict_item = {'lang':'zh','text':cjk_text}
-                            lang_list = merge_lang(lang_list,dict_item)
-                        else:
-                            lang_list = merge_lang(lang_list,dict_item)
-                        continue
-                    else:
-                        lang_list = merge_lang(lang_list,dict_item)
-                        continue
-
-                # 비일본어/한국어에 일본어/한국어 포함
-                for _, temp_item in enumerate(temp_list):
-                    # 미식별 언어의 CJK 여부 확인
-                    if temp_item['lang'] == 'x':
-                        cjk_text = full_cjk(temp_item['text'])
-                        if cjk_text:
-                            lang_list = merge_lang(lang_list,{'lang':'zh','text':cjk_text})
-                        else:
-                            lang_list = merge_lang(lang_list,temp_item)
-                    else:
-                        lang_list = merge_lang(lang_list,temp_item)
-
-        # 숫자 포함
+        # default_lang 가 없을 때만 'digit' 가 남아있음 → 인접 lang 추론.
         if have_num:
             temp_list = lang_list
             lang_list = []
             for i, temp_item in enumerate(temp_list):
-                if temp_item['lang'] == 'digit':
+                if temp_item["lang"] == "digit":
                     if default_lang:
-                        temp_item['lang'] = default_lang
+                        temp_item["lang"] = default_lang
                     elif lang_list and i == len(temp_list) - 1:
-                        temp_item['lang'] = lang_list[-1]['lang']
+                        temp_item["lang"] = lang_list[-1]["lang"]
                     elif not lang_list and i < len(temp_list) - 1:
-                        temp_item['lang'] = temp_list[1]['lang']
+                        temp_item["lang"] = temp_list[1]["lang"]
                     elif lang_list and i < len(temp_list) - 1:
-                        if lang_list[-1]['lang'] == temp_list[i + 1]['lang']:
-                            temp_item['lang'] = lang_list[-1]['lang']
-                        elif lang_list[-1]['text'][-1] in [",",".","!","?","，","。","！","？"]:
-                            temp_item['lang'] = temp_list[i + 1]['lang']
-                        elif temp_list[i + 1]['text'][0] in [",",".","!","?","，","。","！","？"]:
-                            temp_item['lang'] = lang_list[-1]['lang']
-                        elif temp_item['text'][-1] in ["。","."]:
-                            temp_item['lang'] = lang_list[-1]['lang']
-                        elif len(lang_list[-1]['text']) >= len(temp_list[i + 1]['text']):
-                            temp_item['lang'] = lang_list[-1]['lang']
+                        prev_lang = lang_list[-1]["lang"]
+                        next_lang = temp_list[i + 1]["lang"]
+                        if prev_lang == next_lang:
+                            temp_item["lang"] = prev_lang
+                        elif lang_list[-1]["text"][-1] in _PUNCT:
+                            temp_item["lang"] = next_lang
+                        elif temp_list[i + 1]["text"][0] in _PUNCT:
+                            temp_item["lang"] = prev_lang
+                        elif temp_item["text"][-1] in ("。", "."):
+                            temp_item["lang"] = prev_lang
+                        elif len(lang_list[-1]["text"]) >= len(temp_list[i + 1]["text"]):
+                            temp_item["lang"] = prev_lang
                         else:
-                            temp_item['lang'] = temp_list[i + 1]['lang']
+                            temp_item["lang"] = next_lang
                     else:
-                        temp_item['lang'] = 'zh'
+                        temp_item["lang"] = "en"
 
-                lang_list = merge_lang(lang_list,temp_item)
-
-
-        # X 필터링
-        temp_list = lang_list
-        lang_list = []
-        for _, temp_item in enumerate(temp_list):
-            if temp_item['lang'] == 'x':
-                if lang_list:
-                    temp_item['lang'] = lang_list[-1]['lang']
-                elif len(temp_list) > 1:
-                    temp_item['lang'] = temp_list[1]['lang']
-                else:
-                    temp_item['lang'] = 'zh'
-
-            lang_list = merge_lang(lang_list,temp_item)
+                lang_list = _merge_lang(lang_list, temp_item)
 
         return lang_list
