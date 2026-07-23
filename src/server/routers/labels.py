@@ -4,6 +4,7 @@ import mimetypes
 import os
 import tempfile
 
+import soundfile as sf
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse
 from loguru import logger
@@ -90,6 +91,17 @@ def write_labels(label_path: str, labels: list[dict]) -> None:
         raise
 
 
+def _audio_duration(path: str) -> float | None:
+    """오디오 길이(초, 소수 1자리). 상대경로면 프로젝트 루트 기준. 측정 실패 시 None."""
+    if not os.path.isabs(path):
+        path = os.path.join(_PROJECT_ROOT, path)
+    try:
+        info = sf.info(path)
+        return round(info.frames / info.samplerate, 1)
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # 엔드포인트
 # ---------------------------------------------------------------------------
@@ -123,6 +135,7 @@ async def list_labels(request: Request, name: str):
             {
                 "index": i,
                 "audio_file": os.path.basename(lb["path"]),
+                "duration": _audio_duration(lb["path"]),
                 "lang": lb["lang"],
                 "text": lb["text"],
                 "state": lb["state"],

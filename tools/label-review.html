@@ -420,6 +420,7 @@
           <th class="col-idx">#</th>
           <th class="col-play"></th>
           <th class="col-wave">파형</th>
+          <th class="col-dur">길이</th>
           <th class="col-text">텍스트</th>
           <th class="col-lang">언어</th>
           <th class="col-emo">감정 매핑</th>
@@ -591,6 +592,7 @@ function renderLabels() {
           </div>
         </div>
       </td>
+      <td class="dur" style="color:${l.duration != null && (l.duration < 3 || l.duration > 10) ? '#e05252' : 'var(--text-dim)'};font-variant-numeric:tabular-nums;white-space:nowrap">${l.duration != null ? l.duration.toFixed(1) + 's' : '-'}</td>
       <td>
         <input class="text-input" value="${escHtml(l.text)}"
                data-original="${escHtml(l.text)}"
@@ -693,12 +695,14 @@ function drawWaveform(canvas, audioBuffer) {
   ctx.stroke();
 }
 
+// select 에 항상 노출할 기본 감정 범주 (등록 여부와 무관). 등록된 감정과 합쳐 표시한다.
+const BASE_EMOTIONS = ['default', 'happy', 'sad', 'angry', 'surprise', 'disappointed'];
+
 function emotionOptions(labelIndex) {
-  const emoNames = Object.keys(emotions);
-  if (emoNames.length === 0) return '';
-  // 이 라벨에 매핑된 감정 찾기
+  // 기본 범주 + 이미 등록된 감정 (중복 제거, 기본 범주 먼저).
+  const names = [...new Set([...BASE_EMOTIONS, ...Object.keys(emotions)])];
   const mapped = findMappedEmotion(labelIndex);
-  return emoNames.map(name =>
+  return names.map(name =>
     `<option value="${name}" ${name === mapped ? 'selected' : ''}>${name}</option>`
   ).join('');
 }
