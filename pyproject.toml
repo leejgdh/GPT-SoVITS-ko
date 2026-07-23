@@ -85,8 +85,6 @@ packages = ["src"]
 [tool.uv]
 index-strategy = "unsafe-best-match"
 
-# Jetson 환경에서는 아래 인덱스를 제거하고 JetPack PyTorch를 사용:
-#   pip install --no-cache <NVIDIA JetPack PyTorch wheel URL>
 [[tool.uv.index]]
 name = "pytorch-cu126"
 url = "https://download.pytorch.org/whl/cu126"
