@@ -152,7 +152,8 @@ ENV PATH="/app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
 ENV TTS_MODE=train
 
-EXPOSE 14983
+# 컨테이너 내부 포트는 프레임워크 기본값으로 고정하고, 공개 포트는 compose 가 매핑한다.
+EXPOSE 8000
 
 CMD ["python", "main.py", "serve"]
 
@@ -181,6 +182,7 @@ ENV PATH="/app/module-services/tts-service/GPT-SoVITS-ko/.venv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
 ENV TTS_MODE=infer
 
-EXPOSE 14983
+# 컨테이너 내부 포트는 프레임워크 기본값으로 고정하고, 공개 포트는 compose 가 매핑한다.
+EXPOSE 8000
 
 CMD ["python", "main.py", "serve"]

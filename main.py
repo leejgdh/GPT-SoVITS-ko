@@ -36,10 +36,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# 호스트 실행 시 이 프로젝트 루트의 .env.local (gitignored) 을 dotenv 로 로드한다.
-# 현재는 참조하는 env 키가 없어도 구조 통일 차원에서 슬롯 유지.
+# 호스트에서 직접 실행할 때 이 프로젝트 루트의 .env (gitignored) 를 dotenv 로 읽는다.
+# 값이 사는 곳은 그 파일 하나다 — 코드와 config.yaml 에 기본값이 없어, 키가 없으면
+# 설정 로더가 어느 키인지 알리고 멈춘다.
+# docker 실행 시엔 compose 의 environment 가 주입하고 이 파일은 이미지에 없다.
 _PROJECT_ROOT = Path(__file__).resolve().parent
-load_dotenv(_PROJECT_ROOT / ".env.local", override=True)
+load_dotenv(_PROJECT_ROOT / ".env", override=True)
 
 from src.cli.parser import build_parser
 

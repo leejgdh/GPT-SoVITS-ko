@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 from loguru import logger
@@ -14,15 +15,16 @@ def cmd_serve(args: argparse.Namespace) -> None:
     """REST API 서버를 포그라운드로 실행한다."""
     import uvicorn
 
-    from src.config.config import Config, load_config
+    from src.config.config import load_config
+    from src.exceptions import ConfigError
 
     config_path = Path(args.config)
-    if config_path.exists():
+    try:
         config = load_config(config_path)
-        os.environ["TTS_SERVICE_CONFIG"] = str(config_path)
-    else:
-        logger.info("설정 파일 없음 — 기본값으로 실행합니다")
-        config = Config()
+    except ConfigError as e:
+        print(f"설정 로드 실패: {e}", file=sys.stderr)
+        sys.exit(1)
+    os.environ["TTS_SERVICE_CONFIG"] = str(config_path)
 
     log_level = "DEBUG" if args.verbose else config.log_level
     setup_logger("tts_service", level=log_level, log_dir=LOG_DIR)

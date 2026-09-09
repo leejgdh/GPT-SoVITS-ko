@@ -1,7 +1,11 @@
 """tts-service 설정 모델 + 디바이스 감지 helper.
 
-pydantic v2 BaseModel 기반 — VCAugmentationConfig.enabled 등 bool 필드의 env
-치환 함정 (``bool("false") == True``) 을 BoolValidator 가 자동 해결.
+YAML 값의 ``${VAR}`` 를 환경변수 값으로 치환한다. 기본값 양식(``${VAR:-값}``)은
+받지 않고, 환경변수가 없으면 ``ConfigError`` 로 멈춘다 — 값이 사는 곳은 프로젝트
+루트 `.env` 하나다 (컨테이너 실행은 compose 의 environment 가 주입).
+
+설정 모델에도 기본값을 두지 않는다. config.yaml 이 값을 다 적고, 빠지면 검증이
+실패한다 — 같은 값이 코드와 yaml 두 곳에 적히지 않게 한다.
 """
 
 from __future__ import annotations
@@ -10,6 +14,7 @@ import glob
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 import torch
 import yaml
@@ -18,64 +23,100 @@ from pydantic import BaseModel, Field, ValidationError
 
 from src.exceptions import ConfigError
 
+_ENV_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}")
+
+
+def _replace(m: re.Match[str]) -> str:
+    var, default = m.group(1), m.group(2)
+    if default is not None:
+        raise ConfigError(
+            f"{var} 에 기본값이 붙어 있습니다 — 기본값은 코드에 두지 않고 "
+            f"`.env` 에 값을 넣습니다 (config.yaml 에서 `:-` 를 지워야 합니다)",
+        )
+    env_val = os.environ.get(var)
+    if env_val is None:
+        raise ConfigError(
+            f"환경변수 {var} 가 없습니다 — 프로젝트 루트 `.env` 에 값을 넣어야 합니다 "
+            f"(컨테이너 실행은 compose 의 environment 가 주입)",
+        )
+    return env_val
+
+
+def _expand_env(value: Any) -> Any:
+    """문자열/dict/list 안의 ``${VAR}`` 를 환경변수 값으로 치환한다.
+
+    기본값 양식(``${VAR:-값}``)은 받지 않는다 — 값이 사는 곳은 `.env` 하나다.
+    """
+    if isinstance(value, str):
+        return _ENV_RE.sub(_replace, value)
+    if isinstance(value, dict):
+        return {k: _expand_env(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_expand_env(v) for v in value]
+    return value
+
+
 # ---------------------------------------------------------------------------
-# BaseModel 설정
+# BaseModel 설정 — 기본값을 두지 않는다. config.yaml 이 값을 다 적는다.
 # ---------------------------------------------------------------------------
 
 
 class ServiceConfig(BaseModel):
-    host: str = "0.0.0.0"
-    port: int = 9880
+    host: str
+    port: int
 
 
 class VCAudioConfig(BaseModel):
-    sample_rate: int = 44100
-    n_mels: int = 64
-    n_fft: int = 1024
-    hop_length: int = 512
-    target_length: int = 128
+    sample_rate: int
+    n_mels: int
+    n_fft: int
+    hop_length: int
+    target_length: int
 
 
 class VCTrainingConfig(BaseModel):
-    batch_size: int = Field(default=16, gt=0)
-    epochs: int = Field(default=50, gt=0)
-    learning_rate: float = Field(default=0.001, gt=0.0)
-    weight_decay: float = Field(default=0.0001, ge=0.0)
-    val_ratio: float = Field(default=0.2, ge=0.0, lt=1.0)
-    early_stop_patience: int = Field(default=10, ge=0)
-    seed: int = 42
+    batch_size: int = Field(gt=0)
+    epochs: int = Field(gt=0)
+    learning_rate: float = Field(gt=0.0)
+    weight_decay: float = Field(ge=0.0)
+    val_ratio: float = Field(ge=0.0, lt=1.0)
+    early_stop_patience: int = Field(ge=0)
+    seed: int
 
 
 class VCAugmentationConfig(BaseModel):
-    enabled: bool = True
-    time_mask_param: int = Field(default=10, ge=0)
-    freq_mask_param: int = Field(default=5, ge=0)
-    noise_std: float = Field(default=0.005, ge=0.0)
-    minority_oversample: int = Field(default=5, ge=0)
+    enabled: bool
+    time_mask_param: int = Field(ge=0)
+    freq_mask_param: int = Field(ge=0)
+    noise_std: float = Field(ge=0.0)
+    minority_oversample: int = Field(ge=0)
 
 
 class VCInferenceConfig(BaseModel):
-    model_path: str = "data/voice-checker/models/best_model.pth"
-    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    model_path: str
+    threshold: float = Field(ge=0.0, le=1.0)
 
 
 class VoiceCheckerConfig(BaseModel):
     """Voice Checker 설정. config.yaml에 voice_checker 섹션이 있으면 활성화."""
 
-    audio: VCAudioConfig = Field(default_factory=VCAudioConfig)
-    training: VCTrainingConfig = Field(default_factory=VCTrainingConfig)
-    augmentation: VCAugmentationConfig = Field(default_factory=VCAugmentationConfig)
-    inference: VCInferenceConfig = Field(default_factory=VCInferenceConfig)
+    audio: VCAudioConfig
+    training: VCTrainingConfig
+    augmentation: VCAugmentationConfig
+    inference: VCInferenceConfig
 
 
 class Config(BaseModel):
-    service: ServiceConfig = Field(default_factory=ServiceConfig)
+    service: ServiceConfig
     # tts 는 GPT-SoVITS 원본의 자유 dict — version / device / custom 등 양식 다양.
     # BaseModel 로 묶기엔 키 집합이 너무 가변적이라 raw dict 유지.
+    # 섹션이 없으면 device / is_half 를 실행 환경에서 감지한다.
     tts: dict = Field(default_factory=dict)
-    voices_dir: str = "data/voice"
-    default_voice: str | None = None
-    log_level: str = "INFO"
+    voices_dir: str
+    # 빈 값이면 기동 시 voice 를 미리 올리지 않는다.
+    default_voice: str | None
+    log_level: str
+    # 섹션이 없으면 Voice Checker 를 쓰지 않는다.
     voice_checker: VoiceCheckerConfig | None = None
 
 
@@ -114,11 +155,13 @@ def load_config(path: Path) -> Config:
     그대로 dict 유지 — 그 안의 키 (custom / version / weights 등) 는 free-form
     영역이므로 dict 접근 양식 OK.
     """
+    if not path.exists():
+        raise ConfigError(f"설정 파일 없음: {path}")
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
 
     try:
-        cfg = Config.model_validate(data)
+        cfg = Config.model_validate(_expand_env(data))
     except ValidationError as e:
         raise ConfigError(f"설정 검증 실패: {e}") from e
 

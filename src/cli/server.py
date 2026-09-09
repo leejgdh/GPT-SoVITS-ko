@@ -20,17 +20,14 @@ def start_server_background(config_path: str = "config.yaml") -> None:
     import uvicorn
 
     from _setup_paths import setup_gpt_sovits_paths
-    from src.config.config import Config, load_config
+    from src.config.config import load_config
 
     # GPT_SoVITS 내부 모듈 import를 위한 경로 설정 (메인 스레드에서 실행)
     setup_gpt_sovits_paths()
 
     path = Path(config_path)
-    if path.exists():
-        config = load_config(path)
-        os.environ["TTS_SERVICE_CONFIG"] = str(config_path)
-    else:
-        config = Config()
+    config = load_config(path)
+    os.environ["TTS_SERVICE_CONFIG"] = str(config_path)
 
     host = config.service.host
     port = config.service.port

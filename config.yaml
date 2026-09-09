@@ -1,14 +1,16 @@
 # GPT-SoVITS TTS Service 설정
-# 기본값은 코드에 내장. 변경이 필요한 항목만 기재.
+#
+# 값은 이 파일과 `.env` 에만 있다 — 코드(설정 모델)에 기본값을 두지 않는다.
+# 환경마다 달라지는 값은 `${VAR}` 로 `.env` 에서 받고, 빠지면 기동이 거절된다.
 
 # 서버 설정
 service:
-  host: 0.0.0.0
-  port: 14983
+  host: "0.0.0.0"
+  port: "${TTS_PORT}"
 
 # TTS 엔진 설정 (선택)
-# device / is_half 가 비어있으면 자동 감지됨 (CUDA 가용 + SM>=7.0 GPU → fp16).
-# 명시적으로 고정하고 싶을 때만 적습니다:
+# 이 섹션이 없으면 device / is_half 를 실행 환경에서 감지한다
+# (CUDA 가용 + SM>=7.0 GPU → fp16). 명시적으로 고정하고 싶을 때만 적는다:
 # tts:
 #   custom:
 #     device: cuda:0       # 또는 cpu
@@ -16,26 +18,38 @@ service:
 #     version: v2Pro
 #     voice_dir: data/voice/dahwi   # step3 결과에서 가중치 자동 탐색
 
-# voice 디렉토리 루트 (하위에서 voice.yaml을 스캔)
-voices_dir: data/voice
+# voice 디렉토리 루트 (하위에서 voice.yaml 을 스캔)
+voices_dir: "${TTS_VOICES_DIR}"
 
-# 서버 시작 시 기본 로드할 voice (optional)
-default_voice: lena
+# 서버 시작 시 미리 올릴 voice. 비우면 올리지 않는다
+default_voice: "${TTS_DEFAULT_VOICE}"
+
+log_level: "${LOG_LEVEL}"
 
 # ---------------------------------------------------------------------------
 # Voice Checker
-# step1 ASR에서 CNN 품질 분류를 자동 적용합니다.
-# 비활성화하려면 voice_checker 섹션 전체를 주석 처리하세요.
+# step1 ASR 에서 CNN 품질 분류를 자동 적용한다.
+# 쓰지 않으려면 voice_checker 섹션 전체를 주석 처리한다.
 # ---------------------------------------------------------------------------
 voice_checker:
   inference:
-    model_path: "data/voice-checker/models/best_model.pth"
+    model_path: "${TTS_VOICE_CHECKER_MODEL}"
     threshold: 0.5
+  # 아래는 학습 튜닝값 — 환경이 아니라 이 파일이 갖는다.
   training:
     batch_size: 16
     epochs: 50
     learning_rate: 0.001
+    weight_decay: 0.0001
+    val_ratio: 0.2
     early_stop_patience: 10
+    seed: 42
+  augmentation:
+    enabled: true
+    time_mask_param: 10
+    freq_mask_param: 5
+    noise_std: 0.005
+    minority_oversample: 5
   audio:
     sample_rate: 44100
     n_mels: 64
