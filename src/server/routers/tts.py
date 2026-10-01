@@ -22,6 +22,7 @@ from src.metrics import (
     synthesis_duration_seconds,
 )
 from src.server.context import ServiceContext
+from src.server.paths import is_within
 
 router = APIRouter()
 
@@ -75,14 +76,21 @@ def _pack_ogg(
         ) as f:
             f.write(data)
 
-    stack_size = 4096 * 4096
+    # threading.stack_size 는 프로세스 전역 설정이라, 스레드 생성 직후 원복한다.
+    prev_stack_size = 0
     try:
-        threading.stack_size(stack_size)
-        t = threading.Thread(target=_write)
-        t.start()
-        t.join()
+        prev_stack_size = threading.stack_size(4096 * 4096)
     except (RuntimeError, ValueError) as e:
         logger.warning("ogg 패킹 스레드 스택 설정 실패: {}", e)
+    try:
+        t = threading.Thread(target=_write)
+        t.start()
+    finally:
+        try:
+            threading.stack_size(prev_stack_size)
+        except (RuntimeError, ValueError):
+            pass
+    t.join()
     return io_buffer
 
 
@@ -108,7 +116,10 @@ def _pack_aac(io_buffer: BytesIO, data: np.ndarray, rate: int) -> BytesIO:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    out, _ = process.communicate(input=data.tobytes())
+    out, err = process.communicate(input=data.tobytes())
+    if process.returncode != 0:
+        msg = f"ffmpeg aac 인코딩 실패 (code={process.returncode}): {err.decode(errors='replace')[-300:]}"
+        raise RuntimeError(msg)
     io_buffer.write(out)
     return io_buffer
 
@@ -223,6 +234,22 @@ async def _synthesize_stream(
     ctx: ServiceContext, voice_name: str, req: dict,
     media_type: str, volume: float = 1.0,
 ):
+    t0 = time.monotonic()
+    result = "error"
+    try:
+        async for chunk in _synthesize_stream_chunks(ctx, voice_name, req, media_type, volume):
+            yield chunk
+        result = "ok"
+    finally:
+        synthesis_duration_seconds.labels(
+            voice=voice_name, result=result,
+        ).observe(time.monotonic() - t0)
+
+
+async def _synthesize_stream_chunks(
+    ctx: ServiceContext, voice_name: str, req: dict,
+    media_type: str, volume: float = 1.0,
+):
     """TTS 스트리밍 합성 (잠금 하에 실행).
 
     합성 generator 의 next() 와 chunk 인코딩 (_pack_audio) 모두 to_thread 로
@@ -290,6 +317,11 @@ async def tts_post(request: Request, body: TTSRequest):
     # voice.yaml 기본값 + 요청 오버라이드
     emo_ref = profile.get_emotion(body.emotion)
     req = body.model_dump()
+    if body.ref_audio_path and not is_within(ctx.config.voices_dir, body.ref_audio_path):
+        return JSONResponse(
+            status_code=400,
+            content={"message": "ref_audio_path 는 voices_dir 하위여야 합니다"},
+        )
     req["ref_audio_path"] = body.ref_audio_path or emo_ref.ref_audio
     if body.prompt_text is not None:
         req["prompt_text"] = body.prompt_text
@@ -319,11 +351,7 @@ async def tts_post(request: Request, body: TTSRequest):
     t0 = time.monotonic()
     try:
         if is_streaming:
-            # 스트리밍은 response 반환 이후 실제 inference 진행 → 여기선 "setup" 까지만
-            # 관측한다. 전체 time-to-last-byte 는 현재 계측 대상 아님.
-            synthesis_duration_seconds.labels(
-                voice=body.voice, result="ok"
-            ).observe(time.monotonic() - t0)
+            # 스트리밍 소요 시간은 _synthesize_stream 이 마지막 chunk 까지 측정한다.
             return StreamingResponse(
                 _synthesize_stream(ctx, body.voice, req, media_type, volume),
                 media_type=f"audio/{media_type}",
@@ -344,12 +372,12 @@ async def tts_post(request: Request, body: TTSRequest):
         synthesis_bytes.labels(voice=body.voice).observe(len(audio_bytes))
         return Response(audio_bytes, media_type=f"audio/{media_type}")
 
-    except Exception as e:
+    except Exception:
         synthesis_duration_seconds.labels(
             voice=body.voice, result="error"
         ).observe(time.monotonic() - t0)
         logger.exception("TTS 합성 실패")
         return JSONResponse(
-            status_code=400,
-            content={"message": "tts failed", "exception": str(e)},
+            status_code=500,
+            content={"message": "tts failed"},
         )

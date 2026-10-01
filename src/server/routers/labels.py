@@ -8,9 +8,10 @@ import soundfile as sf
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from src.server.context import ServiceContext
+from src.server.paths import validate_name
 
 router = APIRouter()
 
@@ -23,9 +24,24 @@ _PROJECT_ROOT = os.path.dirname(
 # Request 모델
 # ---------------------------------------------------------------------------
 
+def _reject_field_breakers(value: str) -> str:
+    """라벨 파일은 `|` 구분 + 행 단위라 이 문자가 들어가면 파일이 깨진다."""
+    if "|" in value or "\n" in value or "\r" in value:
+        msg = "'|' 와 개행은 사용할 수 없습니다"
+        raise ValueError(msg)
+    return value
+
+
 class LabelUpdateRequest(BaseModel):
     text: str
     lang: str | None = None
+
+    _check_text = field_validator("text")(_reject_field_breakers)
+
+    @field_validator("lang")
+    @classmethod
+    def _check_lang(cls, v: str | None) -> str | None:
+        return v if v is None else _reject_field_breakers(v)
 
 
 class LabelStateRequest(BaseModel):
@@ -43,7 +59,7 @@ _VALID_STATES = {"pending", "approved", "rejected"}
 
 def get_label_path(voices_dir: str, voice_name: str) -> str:
     """voice의 ASR 라벨 파일 경로를 반환한다."""
-    return os.path.join(voices_dir, voice_name, _LABEL_FILE)
+    return os.path.join(voices_dir, validate_name(voice_name, "voice 이름"), _LABEL_FILE)
 
 
 def read_labels(label_path: str) -> list[dict]:

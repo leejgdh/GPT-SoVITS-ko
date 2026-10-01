@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from src.config.voice import EmotionRef, save_voice_yaml
 from src.server.context import ServiceContext
+from src.server.paths import validate_name
 from src.server.routers.labels import get_label_path, read_labels
 
 router = APIRouter()
@@ -205,11 +206,13 @@ async def upload_emotion_ref(
         )
 
     # 파일 저장: data/voice/{name}/ref_emotions/{emotion}_{filename}
+    validate_name(emotion, "감정 이름")
+    filename = validate_name(os.path.basename(file.filename or ""), "파일명")
     voice_dir = os.path.join(ctx.config.voices_dir, name)
     ref_dir = os.path.join(voice_dir, "ref_emotions")
     os.makedirs(ref_dir, exist_ok=True)
 
-    safe_name = f"{emotion}_{file.filename}"
+    safe_name = f"{emotion}_{filename}"
     dest = os.path.join(ref_dir, safe_name)
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
