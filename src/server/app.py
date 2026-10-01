@@ -12,7 +12,7 @@ from loguru import logger
 from prometheus_client import make_asgi_app
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
-from src.config.config import Config, load_config
+from src.config.config import load_config
 from src.metrics import http_duration_seconds, http_requests_total, process_up
 from src.server.context import ServiceContext  # noqa: F401 (sys.path 설정 포함)
 from src.server.routers import all_routers
@@ -68,7 +68,7 @@ class _MetricsMiddleware(BaseHTTPMiddleware):
 def create_app() -> FastAPI:
     """FastAPI 앱을 생성한다. uvicorn factory 모드에서 호출."""
     config_path = Path(os.environ.get("TTS_SERVICE_CONFIG", "config.yaml"))
-    config = load_config(config_path) if config_path.exists() else Config()
+    config = load_config(config_path)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -76,12 +76,7 @@ def create_app() -> FastAPI:
         ctx.warmup()
         app.state.context = ctx
         process_up.set(1)
-        logger.info(
-            "tts-service 시작 (host={}, port={}, voices={})",
-            config.service.host,
-            config.service.port,
-            len(ctx.voices),
-        )
+        logger.info("tts-service 시작 (voices={})", len(ctx.voices))
         try:
             yield
         finally:

@@ -353,11 +353,10 @@ def run_asr(voice_dir: str) -> None:
 
 def run_classify(voice_dir: str, config_path: str = "config.yaml") -> None:
     """vocal.list의 pending 상태를 Voice Checker CNN으로 재분류한다."""
-    from src.config.config import VoiceCheckerConfig, load_config
+    from src.config.config import load_config
 
-    path = Path(config_path)
-    config = load_config(path) if path.exists() else None
-    if config is None or config.voice_checker is None:
+    config = load_config(Path(config_path))
+    if config.voice_checker is None:
         logger.info("voice_checker 미설정 — classify 건너뜀")
         return
 
