@@ -640,8 +640,8 @@ def cmd_step4(args: argparse.Namespace) -> None:
     logger.info("=== Step 4 완료 ({:.0f}초) ===", time.time() - t0)
     logger.info(
         "[완료] voice.yaml이 생성되었습니다.\n"
-        "  합성 테스트: curl -X POST http://localhost:9880/tts -H 'Content-Type: application/json' "
-        "-d '{{\"voice\": \"{}\", \"text\": \"테스트\", \"text_lang\": \"ko\"}}' --output test.wav\n"
+        "  합성 테스트: curl -X POST http://localhost:9880/v1/audio/speech -H 'Content-Type: application/json' "
+        "-d '{{\"model\": \"gpt-sovits\", \"voice\": \"{}\", \"input\": \"테스트\", \"text_lang\": \"ko\"}}' --output test.wav\n"
         "  음질 확인 후 학습 산출물 정리 (선택):\n"
         "    python main.py cleanup-voice --voice-dir {} --dry-run    # 삭제 대상 미리보기\n"
         "    python main.py cleanup-voice --voice-dir {}              # 실제 정리",
