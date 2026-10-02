@@ -41,14 +41,14 @@ http_duration_seconds = Histogram(
 
 synthesis_duration_seconds = Histogram(
     f"{_NS}_synthesis_duration_seconds",
-    "End-to-end /tts synthesis duration (voice switch + inference + encode).",
+    "End-to-end /v1/audio/speech synthesis duration (voice switch + inference + encode).",
     ["voice", "result"],   # result=ok|error
     buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 40.0, 80.0),
 )
 
 synthesis_chars = Histogram(
     f"{_NS}_synthesis_chars",
-    "Input text length (chars) per /tts synthesis. Combined with duration "
+    "Input text length (chars) per /v1/audio/speech synthesis. Combined with duration "
     "it yields chars-per-second throughput.",
     ["voice"],
     buckets=(16, 32, 64, 128, 256, 512, 1024, 2048),
@@ -56,7 +56,7 @@ synthesis_chars = Histogram(
 
 synthesis_bytes = Histogram(
     f"{_NS}_synthesis_bytes",
-    "Output audio payload size (bytes) per /tts synthesis.",
+    "Output audio payload size (bytes) per /v1/audio/speech synthesis.",
     ["voice"],
     buckets=(
         32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024,

@@ -7,6 +7,9 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from prometheus_client import make_asgi_app
@@ -16,6 +19,7 @@ from src.config.config import load_config
 from src.metrics import http_duration_seconds, http_requests_total, process_up
 from src.server.context import ServiceContext  # noqa: F401 (sys.path 설정 포함)
 from src.server.routers import all_routers
+from src.server.routers.tts import openai_error
 
 
 class _RequestIdMiddleware(BaseHTTPMiddleware):
@@ -90,6 +94,15 @@ def create_app() -> FastAPI:
         docs_url="/swagger",
         redoc_url=None,
     )
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """/v1 경로의 본문 검증 실패는 OpenAI 오류 본문 (400) 으로 돌려준다."""
+        if not request.url.path.startswith("/v1/"):
+            return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+        first = exc.errors()[0]
+        loc = [str(x) for x in first["loc"] if x != "body"]
+        return openai_error(400, first["msg"], param=".".join(loc) or None, code="invalid_value")
+
     # 순서 주의: outer → inner. RequestId 먼저, Metrics 가 실핸들러 가까이.
     app.add_middleware(_MetricsMiddleware)
     app.add_middleware(_RequestIdMiddleware)

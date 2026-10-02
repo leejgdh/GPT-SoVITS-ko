@@ -208,8 +208,9 @@
       </select>
       <label for="media">Format</label>
       <select id="media">
-        <option value="wav" selected>wav</option>
-        <option value="ogg">ogg</option>
+        <option value="mp3" selected>mp3</option>
+        <option value="wav">wav</option>
+        <option value="pcm">pcm</option>
         <option value="aac">aac</option>
       </select>
     </div>
@@ -334,13 +335,14 @@ async function synthesize() {
   if (!text) { setStatus('텍스트를 입력하세요.', 'error'); return; }
 
   const body = {
+    model: 'gpt-sovits',
     voice,
-    text,
+    input: text,
     text_lang: $('lang').value,
     emotion: $('emotion').value || 'default',
-    speed_factor: parseFloat($('speed').value),
+    speed: parseFloat($('speed').value),
     volume: parseFloat($('volume').value),
-    media_type: $('media').value,
+    response_format: $('media').value,
   };
 
   $('synthesize').disabled = true;
@@ -348,7 +350,7 @@ async function synthesize() {
   const t0 = performance.now();
 
   try {
-    const res = await fetch(`${origin}/tts`, {
+    const res = await fetch(`${origin}/v1/audio/speech`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -357,7 +359,7 @@ async function synthesize() {
       let msg = `HTTP ${res.status}`;
       try {
         const err = await res.json();
-        if (err.message) msg += ` — ${err.message}`;
+        if (err.error) msg += ` — ${err.error.message}`;
       } catch (_) { /* binary 응답이면 무시 */ }
       throw new Error(msg);
     }
@@ -373,11 +375,11 @@ async function synthesize() {
     player.play().catch(() => { /* autoplay 차단 무시 */ });
 
     const sizeKb = (blob.size / 1024).toFixed(1);
-    $('meta-info').textContent = `${body.media_type} · ${sizeKb} KB · ${elapsed}s`;
+    $('meta-info').textContent = `${body.response_format} · ${sizeKb} KB · ${elapsed}s`;
 
     const dl = $('download');
     dl.href = currentBlobUrl;
-    dl.download = `tts_${voice}_${Date.now()}.${body.media_type}`;
+    dl.download = `tts_${voice}_${Date.now()}.${body.response_format}`;
     dl.style.display = '';
 
     setStatus(`완료 (${elapsed}s)`, 'ok');
