@@ -261,6 +261,15 @@ OpenAI `audio.speech.create` 와 같은 요청 · 응답 · 오류 형식이다.
 | `GET /voices/{name}` | Voice 상세 |
 | `GET /voices/{name}/emotions` | 감정 매핑 |
 | `GET /voices/{name}/labels` | ASR 라벨 + 통계 |
+| `POST /voices` · `POST /voices/reload` | voice 폴더 생성 · voice 재스캔 |
+| `POST /voices/{name}/raw-audio` · `DELETE /voices/{name}/raw-audio/{file}` | 원본 오디오 올리기 · 삭제 |
+| `POST /voices/{name}/cleanup` | 학습 산출물 정리 (`dry_run` 으로 미리보기) |
+| `GET /voices/{name}/dataset` | 학습 단계별 산출물 요약 (파일 수 · 용량) |
+| `GET /voices/{name}/dataset/{stage}/files` | 단계 폴더의 파일 목록 · 내용 (오디오 · 텍스트) |
+| `GET /voices/{name}/dataset/text` · `semantic` · `curves` | step2 음소 · semantic 토큰 · 학습 곡선 |
+| `POST /jobs` · `GET /jobs` · `GET /jobs/{id}` | 파이프라인 job 등록 · 목록 · 상태 |
+| `GET /jobs/{id}/log` · `POST /jobs/{id}/cancel` | job 로그 읽기 · 취소 |
+| `GET /voice-checker/model` | Voice Checker 분류 모델 현황 |
 | `GET /review` | ASR 라벨 검수 UI |
 | `GET /health` | 헬스 체크 |
 | `GET /metrics` | Prometheus 메트릭 |
@@ -326,6 +335,8 @@ voice_checker:                     # 선택 — CNN 품질 분류기 (학습 후
 | 변수 | 의미 |
 |---|---|
 | `TTS_MODE` | `infer` 면 학습 명령 거부. Docker stage 가 자동 설정 |
+| `TTS_JOBS_DIR` | 파이프라인 job 의 상태와 로그를 보관하는 폴더 |
+| `TTS_MODEL_IDLE_UNLOAD_SECONDS` | 마지막 합성 이후 이 시간(초)이 지나면 모델을 VRAM 에서 내린다. `0` 이면 내리지 않는다 |
 | `TTS_SERVICE_CONFIG` | 로드된 config.yaml 절대경로 (서브프로세스에 전달용) |
 
 ---

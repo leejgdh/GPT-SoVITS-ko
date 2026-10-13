@@ -21,8 +21,15 @@ service:
 # voice 디렉토리 루트 (하위에서 voice.yaml 을 스캔)
 voices_dir: "${TTS_VOICES_DIR}"
 
+# 학습 파이프라인 job 의 상태와 로그를 보관하는 폴더
+jobs_dir: "${TTS_JOBS_DIR}"
+
 # 서버 시작 시 미리 올릴 voice. 비우면 올리지 않는다
 default_voice: "${TTS_DEFAULT_VOICE}"
+
+# 마지막 합성 이후 이 시간(초)이 지나면 모델을 내려 VRAM 을 비운다. 0 이면 내리지 않는다.
+# 내려간 뒤 첫 합성 요청은 모델을 다시 올리는 시간만큼 늦다.
+model_idle_unload_seconds: "${TTS_MODEL_IDLE_UNLOAD_SECONDS}"
 
 log_level: "${LOG_LEVEL}"
 

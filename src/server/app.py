@@ -17,9 +17,15 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 from src.config.config import load_config
 from src.metrics import http_duration_seconds, http_requests_total, process_up
+from src.jobs.runner import JobRunner
+from src.jobs.store import JobStore
 from src.server.context import ServiceContext  # noqa: F401 (sys.path 설정 포함)
+from src.server.idle_unloader import IdleUnloader
 from src.server.routers import all_routers
 from src.server.routers.tts import openai_error
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class _RequestIdMiddleware(BaseHTTPMiddleware):
@@ -79,12 +85,24 @@ def create_app() -> FastAPI:
         ctx = ServiceContext.create(config)
         ctx.warmup()
         app.state.context = ctx
+        jobs = JobRunner(JobStore(Path(config.jobs_dir)), ctx, _PROJECT_ROOT, config.voices_dir)
+        jobs.start()
+        app.state.jobs = jobs
+        unloader = (
+            IdleUnloader(ctx, config.model_idle_unload_seconds)
+            if config.model_idle_unload_seconds > 0 else None
+        )
+        if unloader is not None:
+            unloader.start()
         process_up.set(1)
         logger.info("tts-service 시작 (voices={})", len(ctx.voices))
         try:
             yield
         finally:
             process_up.set(0)
+            if unloader is not None:
+                await unloader.stop()
+            await jobs.stop()
             ctx.close()
             logger.info("tts-service 종료")
 

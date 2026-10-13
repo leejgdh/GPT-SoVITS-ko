@@ -90,3 +90,18 @@ __all__ = [
     "voice_switch_total",
     "active_voice",
 ]
+
+# ── 특화: 학습 파이프라인 job ─────────────────────────────────────────────
+
+jobs_total = Counter(
+    f"{_NS}_jobs_total",
+    "Finished pipeline jobs by kind and final status.",
+    ["kind", "result"],   # result=succeeded|failed|canceled|interrupted
+)
+
+job_duration_seconds = Histogram(
+    f"{_NS}_job_duration_seconds",
+    "Pipeline job run time (start to finish) by kind and final status.",
+    ["kind", "result"],
+    buckets=(10, 30, 60, 180, 600, 1800, 3600, 7200, 14400, 28800),
+)

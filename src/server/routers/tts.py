@@ -294,7 +294,7 @@ async def create_speech(request: Request, body: SpeechRequest):
     """OpenAI 호환 음성 합성. ``voice`` 는 Voice Profile 이름이다."""
     ctx = _get_context(request)
 
-    if ctx.tts is None:
+    if ctx.tts_config is None:
         return openai_error(
             503,
             "TTS 파이프라인이 초기화되지 않았습니다. pretrained 모델을 설치하세요.",

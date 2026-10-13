@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import os
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,6 +19,17 @@ if TYPE_CHECKING:
 setup_gpt_sovits_paths()
 
 
+def _weights_stamp(profile: VoiceProfile) -> tuple[tuple[str, float], ...]:
+    """voice 가중치 파일의 (경로, 수정 시각). 학습으로 파일이 바뀌었는지 가린다."""
+    stamp = []
+    for path in (profile.gpt_weights, profile.sovits_weights):
+        try:
+            stamp.append((path, os.path.getmtime(path) if path else 0.0))
+        except OSError:
+            stamp.append((path, 0.0))
+    return tuple(stamp)
+
+
 class ServiceContext:
     """TTS 서비스 의존성 컨테이너."""
 
@@ -26,48 +39,21 @@ class ServiceContext:
         self._tts_config = None
         self._voices: dict[str, VoiceProfile] = {}
         self._current_voice: str | None = None
+        self._loaded_stamp: tuple[tuple[str, float], ...] = ()
         self._lock = asyncio.Lock()
+        self._last_used = time.monotonic()
 
     @classmethod
     def create(cls, config: Config) -> ServiceContext:
-        """설정에서 TTS 파이프라인을 초기화하고 voice를 스캔한다."""
-        from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
-        from src.config.config import detect_device, detect_half
-
+        """TTS 설정을 만들고 voice를 스캔한다. 모델은 첫 합성 요청이나 기본 voice 에서 올린다."""
         ctx = cls(config)
-
-        # device / is_half 가 conf.yaml 에 명시되지 않았으면 자동 감지로 채운다.
-        # (TTS_Config 기본값은 device='cpu', is_half=False 라 GPU 가 있어도 못 활용.)
-        # custom 키를 만들면 TTS_Config 가 v2Pro default 를 무시하므로 — version /
-        # weights 경로가 누락되어 assert 실패. v2Pro default 를 base 로 깔고 사용자
-        # override 를 위에 머지한다.
-        tts_dict = dict(config.tts) if isinstance(config.tts, dict) else {}
-        user_custom = dict(tts_dict.get("custom", {}))
-        custom = {**TTS_Config.default_configs["v2Pro"], **user_custom}
-        if "device" not in user_custom:
-            custom["device"] = str(detect_device())
-        if "is_half" not in user_custom:
-            custom["is_half"] = detect_half()
-        tts_dict["custom"] = custom
-
-        # TTS 파이프라인 초기화 (pretrained 모델 없으면 스킵)
-        try:
-            ctx._tts_config = TTS_Config(tts_dict)
-            logger.info(
-                "TTS device={} is_half={} version={}",
-                ctx._tts_config.device, ctx._tts_config.is_half, ctx._tts_config.version,
-            )
-            ctx._tts_pipeline = TTS(ctx._tts_config)
-            logger.info("TTS 파이프라인 초기화 완료")
-        except (FileNotFoundError, OSError) as e:
-            logger.warning("TTS 파이프라인 초기화 스킵 (모델 미설치): {}", e)
-            logger.warning("TTS 합성 비활성 — 라벨링/검수 기능만 사용 가능")
+        ctx._configure_tts()
 
         # voice 스캔
         ctx._voices = scan_voices(config.voices_dir)
 
         # 기본 voice 로드 (available 상태인 경우만)
-        if config.default_voice and ctx._tts_pipeline is not None:
+        if config.default_voice and ctx._tts_config is not None:
             profile = ctx._voices.get(config.default_voice)
             if profile and profile.available:
                 ctx.switch_voice(config.default_voice)
@@ -81,9 +67,108 @@ class ServiceContext:
 
         return ctx
 
+    def _configure_tts(self) -> None:
+        """TTS 설정을 만든다. pretrained 모델이 없으면 합성을 비활성으로 둔다."""
+        from GPT_SoVITS.TTS_infer_pack.TTS import TTS_Config
+        from src.config.config import detect_device, detect_half
+
+        # device / is_half 가 conf.yaml 에 명시되지 않았으면 자동 감지로 채운다.
+        # (TTS_Config 기본값은 device='cpu', is_half=False 라 GPU 가 있어도 못 활용.)
+        # custom 키를 만들면 TTS_Config 가 v2Pro default 를 무시하므로 — version /
+        # weights 경로가 누락되어 assert 실패. v2Pro default 를 base 로 깔고 사용자
+        # override 를 위에 머지한다.
+        tts_dict = dict(self.config.tts) if isinstance(self.config.tts, dict) else {}
+        user_custom = dict(tts_dict.get("custom", {}))
+        custom = {**TTS_Config.default_configs["v2Pro"], **user_custom}
+        if "device" not in user_custom:
+            custom["device"] = str(detect_device())
+        if "is_half" not in user_custom:
+            custom["is_half"] = detect_half()
+        tts_dict["custom"] = custom
+
+        try:
+            self._tts_config = TTS_Config(tts_dict)
+        except (FileNotFoundError, OSError) as e:
+            logger.warning("TTS 설정 초기화 스킵 (모델 미설치): {}", e)
+            logger.warning("TTS 합성 비활성 — 라벨링/검수 기능만 사용 가능")
+            return
+        logger.info(
+            "TTS device={} is_half={} version={}",
+            self._tts_config.device, self._tts_config.is_half, self._tts_config.version,
+        )
+
+    def _load_pipeline(self) -> None:
+        """TTS 파이프라인을 VRAM 에 올린다."""
+        from GPT_SoVITS.TTS_infer_pack.TTS import TTS
+
+        self._tts_pipeline = TTS(self._tts_config)
+        logger.info("TTS 파이프라인 로드 완료")
+
+    def release_models(self) -> None:
+        """파이프라인과 voice 가중치를 내리고 VRAM 을 반환한다. 합성 잠금 하에서 부른다."""
+        if self._tts_pipeline is None:
+            return
+        self._tts_pipeline = None
+        self._forget_current_voice()
+        self._free_device_memory()
+        logger.info("TTS 모델 unload 완료")
+
+    def _forget_current_voice(self) -> None:
+        """로드된 voice 표시를 지워 다음 합성에서 가중치를 다시 올리게 한다."""
+        from src.metrics import active_voice
+
+        if self._current_voice:
+            active_voice.labels(voice=self._current_voice).set(0)
+        self._current_voice = None
+        self._loaded_stamp = ()
+
+    async def reload_voices(self) -> int:
+        """voices_dir 를 다시 읽는다. 로드된 voice 의 가중치 파일이 바뀌었으면 다음 합성에서 다시 올린다."""
+        async with self._lock:
+            return await asyncio.to_thread(self._rescan_voices)
+
+    def _rescan_voices(self) -> int:
+        fresh = scan_voices(self.config.voices_dir)
+        current = self._current_voice
+        if current and (current not in fresh or _weights_stamp(fresh[current]) != self._loaded_stamp):
+            self._forget_current_voice()
+        self._voices = fresh
+        return len(fresh)
+
+    async def unload_models(self) -> bool:
+        """합성이 끝나길 기다렸다가 모델을 내린다. 내렸으면 True."""
+        async with self._lock:
+            if self._tts_pipeline is None:
+                return False
+            await asyncio.to_thread(self.release_models)
+            return True
+
+    async def unload_if_idle(self, idle_seconds: float) -> bool:
+        """마지막 사용 후 ``idle_seconds`` 가 지났으면 모델을 내린다. 내렸으면 True."""
+        async with self._lock:
+            if self._tts_pipeline is None or self.idle_seconds < idle_seconds:
+                return False
+            await asyncio.to_thread(self.release_models)
+            return True
+
+    @property
+    def idle_seconds(self) -> float:
+        """마지막 합성 요청 이후 지난 시간(초)."""
+        return time.monotonic() - self._last_used
+
+    @staticmethod
+    def _free_device_memory() -> None:
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception as e:
+            logger.debug("CUDA empty_cache skip ({}): {}", type(e).__name__, e)
+
     @property
     def tts(self):
-        """TTS 파이프라인 인스턴스."""
+        """로드된 TTS 파이프라인. 내려가 있으면 None."""
         return self._tts_pipeline
 
     @property
@@ -108,7 +193,7 @@ class ServiceContext:
 
     def warmup(self) -> None:
         """CUDA 워밍업을 위해 더미 합성을 실행한다."""
-        if self._current_voice is None:
+        if self._tts_pipeline is None or self._current_voice is None:
             logger.warning("워밍업 스킵: 로드된 voice 없음")
             return
 
@@ -135,13 +220,18 @@ class ServiceContext:
             logger.warning("CUDA 워밍업 실패: {}", e)
 
     def switch_voice(self, name: str) -> None:
-        """voice를 전환한다. 가중치를 로드하고 현재 voice를 업데이트."""
+        """voice를 전환한다. 파이프라인이 내려가 있으면 올리고, 가중치를 로드해 현재 voice를 업데이트."""
         from src.metrics import active_voice, voice_switch_total
+
+        self._last_used = time.monotonic()
 
         if name not in self._voices:
             from src.exceptions import VoiceNotFoundError
             msg = f"voice '{name}' 이(가) 등록되어 있지 않습니다"
             raise VoiceNotFoundError(msg)
+
+        if self._tts_pipeline is None:
+            self._load_pipeline()
 
         if name == self._current_voice:
             logger.debug("이미 '{}' voice가 로드되어 있습니다", name)
@@ -157,16 +247,7 @@ class ServiceContext:
         self._tts_pipeline.init_t2s_weights(profile.gpt_weights)
         self._tts_pipeline.init_vits_weights(profile.sovits_weights)
 
-        # 이전 voice 의 가중치 메모리 회수 — init_*_weights 가 self.{t2s,vits}_model
-        # 을 *덮어쓰기* 라 옛 모델은 reference 0 인데 PyTorch CUDA cache 가 잡고
-        # 있다. 명시 gc + cache flush 로 CPU RAM / VRAM 양쪽 회수.
-        gc.collect()
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception as e:
-            logger.debug("CUDA empty_cache skip ({}): {}", type(e).__name__, e)
+        self._free_device_memory()
 
         # 메트릭: 이전 voice 를 0 으로 내리고 새 voice 를 1 로.
         if self._current_voice:
@@ -175,6 +256,7 @@ class ServiceContext:
         voice_switch_total.labels(voice=name).inc()
 
         self._current_voice = name
+        self._loaded_stamp = _weights_stamp(profile)
         logger.info("voice '{}' 로드 완료", name)
 
     def get_voice_profile(self, name: str) -> VoiceProfile | None:

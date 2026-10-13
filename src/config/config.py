@@ -113,8 +113,12 @@ class Config(BaseModel):
     # 섹션이 없으면 device / is_half 를 실행 환경에서 감지한다.
     tts: dict = Field(default_factory=dict)
     voices_dir: str
+    # job 상태와 로그를 보관하는 폴더.
+    jobs_dir: str
     # 빈 값이면 기동 시 voice 를 미리 올리지 않는다.
     default_voice: str | None
+    # 마지막 합성 이후 이 시간(초)이 지나면 모델을 내린다. 0 이면 내리지 않는다.
+    model_idle_unload_seconds: int = Field(ge=0)
     log_level: str
     # 섹션이 없으면 Voice Checker 를 쓰지 않는다.
     voice_checker: VoiceCheckerConfig | None = None
