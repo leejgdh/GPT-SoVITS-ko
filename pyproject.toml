@@ -13,8 +13,8 @@ dependencies = [
     "python-dotenv",
     "prometheus-client>=0.20",
     # --- ML Core (추론 필수) ---
-    "torch>=2.10",
-    "torchaudio>=2.10",
+    "torch>=2.10,<2.11",
+    "torchaudio>=2.10,<2.11",
     "numpy>=1.26,<2.0",
     "scipy",
     "librosa==0.10.2",
@@ -57,8 +57,15 @@ training = [
     # FunASR / FRCRN denoise / UVR5 (step1)
     "funasr==1.0.27",
     "modelscope>=1.20",
+    "addict",
+    "simplejson",
+    "sortedcontainers",
+    # 오디오 디코딩 (ASR · torchaudio.load)
+    "av<18",
+    "torchcodec>=0.10,<0.11",
     # 학습 데이터
     "datasets>=2.18,<3.0",
+    "pyarrow<24",
     "pandas>=2.2",
     # 학습 시각화/로깅
     "tensorboard",
