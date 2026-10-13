@@ -1,4 +1,4 @@
-"""voice 작업 폴더 관리 API — 생성 · 재스캔 · 원본 오디오 · 학습 산출물 정리."""
+"""voice 작업 폴더 관리 API — 생성 · 재스캔 · 단계별 파일 올리기/지우기 · 학습 산출물 정리."""
 from __future__ import annotations
 
 import asyncio
@@ -9,11 +9,19 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, field_validator
 
-from src.exceptions import CleanupError, RawAudioExistsError, UnsupportedAudioError, VoiceExistsError
+from src.exceptions import (
+    CleanupError,
+    InvalidFileNameError,
+    InvalidLabelListError,
+    StageFileExistsError,
+    UnsupportedFileError,
+    VoiceExistsError,
+)
 from src.server.context import ServiceContext
 from src.server.paths import validate_name
+from src.server.stage_access import stage_dir_of, stage_of, voice_dir_of
 from src.voices.cleanup import CleanupPlan, execute_cleanup, plan_cleanup
-from src.voices.workspace import create_voice, remove_raw_audio, save_raw_audio
+from src.voices.workspace import create_voice, remove_stage_file, remove_vocal_label, save_label_list, save_stage_file
 
 router = APIRouter(tags=["voice-manage"])
 
@@ -45,7 +53,7 @@ class VoicesReloaded(BaseModel):
     voices: int
 
 
-class RawAudioUploaded(BaseModel):
+class FilesUploaded(BaseModel):
     saved: list[str]
 
 
@@ -73,13 +81,6 @@ class CleanupResult(BaseModel):
 
 def _context(request: Request) -> ServiceContext:
     return request.app.state.context
-
-
-def _voice_dir(request: Request, name: str) -> Path:
-    voice_dir = Path(_context(request).config.voices_dir) / validate_name(name, "voice 이름")
-    if not voice_dir.is_dir():
-        raise HTTPException(404, detail=f"voice '{name}' 폴더가 없습니다")
-    return voice_dir
 
 
 def _require_idle(request: Request, name: str) -> None:
@@ -121,40 +122,59 @@ async def reload_voices(request: Request) -> VoicesReloaded:
     return VoicesReloaded(voices=await _context(request).reload_voices())
 
 
-@router.post("/voices/{name}/raw-audio", response_model=RawAudioUploaded)
-async def upload_raw_audio(
-    request: Request, name: str, files: list[UploadFile] = File(...),
-) -> RawAudioUploaded:
-    """원본 오디오를 올린다. 같은 이름이 있으면 거절한다."""
-    voice_dir = _voice_dir(request, name)
+@router.post("/voices/{name}/dataset/{stage}/files", response_model=FilesUploaded)
+async def upload_stage_files(
+    request: Request, name: str, stage: str, version: str | None = None, files: list[UploadFile] = File(...),
+) -> FilesUploaded:
+    """학습 단계 폴더에 파일을 올린다. 단계마다 받는 확장자가 다르다 (``GET /voices/{name}/dataset`` 의 ``accepts``).
+
+    ``asr`` 단계는 음성 인식 목록(``파일|구분|언어|문장[|상태]``)을 받아 잘라낸 음성의 경로로 맞춰 저장한다.
+    """
+    voice_dir = voice_dir_of(request, name)
+    spec = stage_of(stage)
+    if not spec.accepts:
+        raise HTTPException(400, detail=f"단계 '{stage}' 에는 파일을 올릴 수 없습니다")
     _require_idle(request, name)
+    directory = stage_dir_of(voice_dir, spec, version, create=True)
+    ctx: ServiceContext = request.app.state.context
     saved: list[str] = []
     for upload in files:
         filename = validate_name(os.path.basename(upload.filename or ""), "파일명")
         try:
-            await asyncio.to_thread(save_raw_audio, voice_dir, filename, upload.file)
-        except UnsupportedAudioError as exc:
+            if stage == "asr":
+                await asyncio.to_thread(save_label_list, voice_dir, os.path.join(ctx.config.voices_dir, name), upload.file)
+                filename = "03_vocal.list"
+            else:
+                await asyncio.to_thread(save_stage_file, directory, filename, upload.file, spec.accepts)
+        except UnsupportedFileError as exc:
             raise HTTPException(415, detail=str(exc)) from exc
-        except RawAudioExistsError as exc:
+        except (InvalidFileNameError, InvalidLabelListError) as exc:
+            raise HTTPException(400, detail=str(exc)) from exc
+        except StageFileExistsError as exc:
             raise HTTPException(409, detail=str(exc)) from exc
         saved.append(filename)
-    return RawAudioUploaded(saved=saved)
+    return FilesUploaded(saved=saved)
 
 
-@router.delete("/voices/{name}/raw-audio/{filename}", status_code=204)
-async def delete_raw_audio(request: Request, name: str, filename: str) -> None:
-    """원본 오디오를 지운다."""
-    voice_dir = _voice_dir(request, name)
+@router.delete("/voices/{name}/dataset/{stage}/files/{filename}", status_code=204)
+async def delete_stage_file(request: Request, name: str, stage: str, filename: str, version: str | None = None) -> None:
+    """학습 단계 폴더의 파일을 지운다. 잘라낸 음성이면 음성 인식 목록에서 그 파일의 줄도 지운다."""
+    voice_dir = voice_dir_of(request, name)
+    spec = stage_of(stage)
+    if not spec.accepts:
+        raise HTTPException(400, detail=f"단계 '{stage}' 의 파일은 지울 수 없습니다")
     _require_idle(request, name)
-    removed = await asyncio.to_thread(remove_raw_audio, voice_dir, validate_name(filename, "파일명"))
-    if not removed:
+    directory = stage_dir_of(voice_dir, spec, version)
+    if not await asyncio.to_thread(remove_stage_file, directory, validate_name(filename, "파일명")):
         raise HTTPException(404, detail=f"파일 없음: {filename}")
+    if stage == "vocal":
+        await asyncio.to_thread(remove_vocal_label, voice_dir, filename)
 
 
 @router.post("/voices/{name}/cleanup", response_model=CleanupResult)
 async def cleanup_voice(request: Request, name: str, body: CleanupRequest) -> CleanupResult:
     """학습 산출물을 정리한다. ``dry_run`` 이면 삭제 대상만 돌려주고 지우지 않는다."""
-    voice_dir = _voice_dir(request, name)
+    voice_dir = voice_dir_of(request, name)
     try:
         plan = await asyncio.to_thread(
             plan_cleanup, str(voice_dir), keep_raw=body.keep_raw, keep_asr=body.keep_asr,

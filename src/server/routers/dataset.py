@@ -8,10 +8,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.dataset.files import AUDIO_SUFFIXES, TEXT_SUFFIXES, list_files, summarize
-from src.dataset.stages import STAGES, Stage, voice_versions
+from src.dataset.stages import STAGES, voice_versions
 from src.dataset.tables import read_curves, read_semantic_rows, read_text_rows
-from src.server.context import ServiceContext
 from src.server.paths import is_within, validate_name
+from src.server.stage_access import stage_dir_of, stage_of, voice_dir_of
 
 router = APIRouter(tags=["dataset"])
 
@@ -28,6 +28,7 @@ class StageInfo(BaseModel):
     exists: bool
     files: int
     bytes: int
+    accepts: list[str]
 
 
 class DatasetSummary(BaseModel):
@@ -83,51 +84,26 @@ class CurveList(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# 경로 해석
-# ---------------------------------------------------------------------------
-
-def _voice_dir(request: Request, name: str) -> Path:
-    ctx: ServiceContext = request.app.state.context
-    voice_dir = Path(ctx.config.voices_dir) / validate_name(name, "voice 이름")
-    if not voice_dir.is_dir():
-        raise HTTPException(404, detail=f"voice '{name}' 폴더가 없습니다")
-    return voice_dir
-
-
-def _stage(key: str) -> Stage:
-    stage = STAGES.get(key)
-    if stage is None:
-        raise HTTPException(404, detail=f"알 수 없는 단계: {key}")
-    return stage
-
-
-def _stage_dir(voice_dir: Path, stage: Stage, version: str | None) -> Path:
-    if stage.versioned:
-        if not version:
-            raise HTTPException(400, detail=f"단계 '{stage.key}' 는 version 이 필요합니다")
-        validate_name(version, "version")
-    directory = stage.directory(voice_dir, version)
-    if not directory.is_dir():
-        raise HTTPException(404, detail=f"단계 '{stage.key}' 폴더가 없습니다")
-    return directory
-
-
-# ---------------------------------------------------------------------------
 # 엔드포인트
 # ---------------------------------------------------------------------------
 
 @router.get("/voices/{name}/dataset", response_model=DatasetSummary)
-def dataset_summary(request: Request, name: str) -> DatasetSummary:
-    """단계별 폴더 존재 여부 · 파일 수 · 용량을 반환한다."""
-    voice_dir = _voice_dir(request, name)
+def dataset_summary(request: Request, name: str, version: str | None = None) -> DatasetSummary:
+    """모든 단계의 폴더 존재 여부 · 파일 수 · 용량 · 올릴 수 있는 확장자를 반환한다.
+
+    ``version`` 을 주면 아직 폴더가 없는 그 버전의 단계도 함께 싣는다. ``versions`` 는 폴더가 있는 버전만이다.
+    """
+    voice_dir = voice_dir_of(request, name)
     versions = voice_versions(voice_dir)
+    shown = sorted({*versions, validate_name(version, "version")} if version else versions)
     infos: list[StageInfo] = []
     for stage in STAGES.values():
-        for version in (versions if stage.versioned else [None]):
-            result = summarize(stage.directory(voice_dir, version), stage.recursive)
+        for stage_version in (shown if stage.versioned else [None]):
+            result = summarize(stage.directory(voice_dir, stage_version), stage.recursive)
             infos.append(StageInfo(
-                key=stage.key, version=version,
+                key=stage.key, version=stage_version,
                 exists=result.exists, files=result.files, bytes=result.bytes,
+                accepts=sorted(stage.accepts),
             ))
     return DatasetSummary(voice=name, versions=versions, stages=infos)
 
@@ -138,7 +114,7 @@ def dataset_text(
     offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=_MAX_PAGE),
 ) -> TextRowList:
     """step2 음소 파일(name2text.txt)의 한 페이지."""
-    directory = _stage_dir(_voice_dir(request, name), STAGES["step2"], version)
+    directory = stage_dir_of(voice_dir_of(request, name), STAGES["step2"], version)
     path = directory / "name2text.txt"
     if not path.is_file():
         raise HTTPException(404, detail="음소 파일이 없습니다")
@@ -152,7 +128,7 @@ def dataset_semantic(
     offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=_MAX_PAGE),
 ) -> SemanticRowList:
     """step2 semantic 토큰 파일(name2semantic.tsv)의 한 페이지."""
-    directory = _stage_dir(_voice_dir(request, name), STAGES["step2"], version)
+    directory = stage_dir_of(voice_dir_of(request, name), STAGES["step2"], version)
     path = directory / "name2semantic.tsv"
     if not path.is_file():
         raise HTTPException(404, detail="semantic 파일이 없습니다")
@@ -163,7 +139,7 @@ def dataset_semantic(
 @router.get("/voices/{name}/dataset/curves", response_model=CurveList)
 def dataset_curves(request: Request, name: str, version: str) -> CurveList:
     """GPT · SoVITS 학습 로그의 스칼라 곡선. 학습 로그가 없으면 빈 목록이다."""
-    voice_dir = _voice_dir(request, name)
+    voice_dir = voice_dir_of(request, name)
     curves: list[CurveInfo] = []
     available = True
     for source, key in (("gpt", "gpt_logs"), ("sovits", "sovits_logs")):
@@ -185,8 +161,8 @@ def dataset_files(
     offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=_MAX_PAGE),
 ) -> FileList:
     """단계 폴더의 파일 목록 한 페이지. 오디오는 길이를 함께 준다."""
-    spec = _stage(stage)
-    directory = _stage_dir(_voice_dir(request, name), spec, version)
+    spec = stage_of(stage)
+    directory = stage_dir_of(voice_dir_of(request, name), spec, version)
     total, entries = list_files(directory, spec.recursive, offset, limit)
     return FileList(total=total, items=[FileInfo(**vars(e)) for e in entries])
 
@@ -196,8 +172,8 @@ def dataset_file(
     request: Request, name: str, stage: str, file_path: str, version: str | None = None,
 ) -> FileResponse:
     """단계 폴더의 오디오 · 텍스트 파일 내용. 그 밖의 종류(가중치 · 특징 파일)는 내주지 않는다."""
-    spec = _stage(stage)
-    directory = _stage_dir(_voice_dir(request, name), spec, version)
+    spec = stage_of(stage)
+    directory = stage_dir_of(voice_dir_of(request, name), spec, version)
     target = directory / file_path
     if not is_within(str(directory), str(target)) or not target.is_file():
         raise HTTPException(404, detail=f"파일 없음: {file_path}")

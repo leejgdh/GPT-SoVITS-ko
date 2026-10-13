@@ -262,7 +262,7 @@ OpenAI `audio.speech.create` 와 같은 요청 · 응답 · 오류 형식이다.
 | `GET /voices/{name}/emotions` | 감정 매핑 |
 | `GET /voices/{name}/labels` | ASR 라벨 + 통계 |
 | `POST /voices` · `POST /voices/reload` | voice 폴더 생성 · voice 재스캔 |
-| `POST /voices/{name}/raw-audio` · `DELETE /voices/{name}/raw-audio/{file}` | 원본 오디오 올리기 · 삭제 |
+| `POST /voices/{name}/dataset/{stage}/files` · `DELETE /voices/{name}/dataset/{stage}/files/{file}` | 단계 폴더에 파일 올리기 · 지우기 (단계마다 받는 확장자가 다름 — `GET /voices/{name}/dataset` 의 `accepts`) |
 | `POST /voices/{name}/cleanup` | 학습 산출물 정리 (`dry_run` 으로 미리보기) |
 | `GET /voices/{name}/dataset` | 학습 단계별 산출물 요약 (파일 수 · 용량) |
 | `GET /voices/{name}/dataset/{stage}/files` | 단계 폴더의 파일 목록 · 내용 (오디오 · 텍스트) |
