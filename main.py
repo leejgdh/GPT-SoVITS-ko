@@ -128,11 +128,14 @@ def main() -> None:
         sys.exit(2)
 
     if args.command in _TRAIN_COMMANDS:
-        from src.cli.server import start_server_background, wait_for_server
-        config_path = getattr(args, "config", "config.yaml")
-        start_server_background(config_path)
-        handler(args)
-        wait_for_server()
+        if args.no_server:
+            handler(args)
+        else:
+            from src.cli.server import start_server_background, wait_for_server
+            config_path = getattr(args, "config", "config.yaml")
+            start_server_background(config_path)
+            handler(args)
+            wait_for_server()
     else:
         handler(args)
 

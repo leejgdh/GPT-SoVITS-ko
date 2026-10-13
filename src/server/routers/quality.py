@@ -15,6 +15,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from src.server.context import ServiceContext
+from src.server.paths import validate_name
 
 # ---------------------------------------------------------------------------
 # 라우터 정의
@@ -54,14 +55,14 @@ def _require_vc(request: Request) -> ServiceContext:
 
 def _get_vocal_dir(ctx: ServiceContext, voice: str) -> Path:
     """voice의 step1/03_vocal 디렉토리 경로를 반환한다."""
-    vocal_dir = Path(ctx.config.voices_dir) / voice / "step1" / "03_vocal"
+    vocal_dir = Path(ctx.config.voices_dir) / validate_name(voice, "voice 이름") / "step1" / "03_vocal"
     if not vocal_dir.is_dir():
         raise HTTPException(404, detail=f"'{voice}' 의 step1/03_vocal 디렉토리가 없습니다")
     return vocal_dir
 
 
 def _get_labels_path(ctx: ServiceContext, voice: str) -> Path:
-    return Path(ctx.config.voices_dir) / voice / _LABELS_FILENAME
+    return Path(ctx.config.voices_dir) / validate_name(voice, "voice 이름") / _LABELS_FILENAME
 
 
 def _load_labels(labels_path: Path) -> dict[str, str]:
