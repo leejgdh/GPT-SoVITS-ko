@@ -49,6 +49,13 @@ def create_voice(voices_dir: str, name: str) -> Path:
     return voice_dir
 
 
+def remove_voice(voices_dir: str, name: str) -> None:
+    """voice 폴더를 학습 자료 · 산출물째 지운다."""
+    voice_dir = Path(voices_dir) / name
+    shutil.rmtree(voice_dir)
+    logger.info("voice 삭제: {}", voice_dir)
+
+
 def save_stage_file(directory: Path, filename: str, stream: BinaryIO, accepts: frozenset[str]) -> None:
     """파일을 단계 폴더에 저장한다. 폴더가 없으면 만든다.
 

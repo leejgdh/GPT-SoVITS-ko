@@ -1,4 +1,4 @@
-"""voice 작업 폴더 관리 API — 생성 · 재스캔 · 단계별 파일 올리기/지우기 · 학습 산출물 정리."""
+"""voice 작업 폴더 관리 API — 생성 · 삭제 · 재스캔 · 단계별 파일 올리기/지우기 · 학습 산출물 정리."""
 from __future__ import annotations
 
 import asyncio
@@ -120,6 +120,14 @@ async def create_voice_endpoint(request: Request, body: CreateVoiceRequest) -> V
 async def reload_voices(request: Request) -> VoicesReloaded:
     """voice 폴더를 다시 읽는다. 학습이 끝난 voice 를 합성에 반영할 때 쓴다."""
     return VoicesReloaded(voices=await _context(request).reload_voices())
+
+
+@router.delete("/voices/{name}", status_code=204)
+async def delete_voice_endpoint(request: Request, name: str) -> None:
+    """voice 를 학습 자료 · 산출물째 지운다. 대기 중이거나 실행 중인 job 이 있으면 지우지 않는다."""
+    voice_dir_of(request, name)
+    _require_idle(request, name)
+    await _context(request).delete_voice(name)
 
 
 @router.post("/voices/{name}/dataset/{stage}/files", response_model=FilesUploaded)

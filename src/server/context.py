@@ -11,6 +11,7 @@ from loguru import logger
 
 from _setup_paths import setup_gpt_sovits_paths
 from src.config.voice import VoiceProfile, scan_voices
+from src.voices.workspace import remove_voice
 
 if TYPE_CHECKING:
     from src.config.config import Config
@@ -126,6 +127,12 @@ class ServiceContext:
         """voices_dir 를 다시 읽는다. 로드된 voice 의 가중치 파일이 바뀌었으면 다음 합성에서 다시 올린다."""
         async with self._lock:
             return await asyncio.to_thread(self._rescan_voices)
+
+    async def delete_voice(self, name: str) -> None:
+        """합성이 끝나길 기다렸다가 voice 폴더를 지우고 목록을 다시 읽는다."""
+        async with self._lock:
+            await asyncio.to_thread(remove_voice, self.config.voices_dir, name)
+            await asyncio.to_thread(self._rescan_voices)
 
     def _rescan_voices(self) -> int:
         fresh = scan_voices(self.config.voices_dir)
