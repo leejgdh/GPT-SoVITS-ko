@@ -108,9 +108,9 @@ uv run python main.py pipeline \
 
 ```bash
 uv run python main.py serve &
-curl -X POST http://localhost:9880/tts \
+curl -X POST http://localhost:9880/v1/audio/speech \
   -H 'Content-Type: application/json' \
-  -d '{"voice": "{agent_id}", "text": "안녕하세요", "text_lang": "ko"}' \
+  -d '{"model": "gpt-sovits", "voice": "{agent_id}", "input": "안녕하세요", "text_lang": "ko"}' \
   --output out.wav
 ```
 
@@ -235,19 +235,23 @@ docker run --rm --gpus all \
 
 ## API
 
-### `POST /tts` — 합성
+### `POST /v1/audio/speech` — 합성 (OpenAI 호환)
+
+OpenAI `audio.speech.create` 와 같은 요청 · 응답 · 오류 형식이다. 확장 필드는 OpenAI SDK 의 `extra_body` 로 보내면 최상위 키로 합쳐진다.
 
 | 파라미터 | 타입 | 필수 | 설명 |
 |----------|------|:----:|------|
+| `model` | string | O | 받기만 하고 쓰지 않는다 (모델이 하나) |
+| `input` | string | O | 합성할 텍스트 |
 | `voice` | string | O | Voice Profile 이름 |
-| `text` | string | O | 합성할 텍스트 |
-| `text_lang` | string | O | `ko` / `ja` / `en` / `auto` |
-| `emotion` | string | - | 감정 프리셋 (기본: `default`) |
-| `media_type` | string | - | `wav` / `ogg` / `aac` / `raw` |
-| `streaming_mode` | int | - | 0: 일괄 / 1: fragment / 2: 스트리밍 / 3: 고정 청크 |
-| `speed_factor` | float | - | 1.0 |
-| `temperature` | float | - | 1.0 |
-| `top_k` | int | - | 15 |
+| `response_format` | string | - | `mp3`(기본) / `wav` / `aac` / `pcm` |
+| `speed` | float | - | 0.25 ~ 4.0, 기본 1.0 |
+| `stream_format` | string | - | `audio`(기본, 완성된 본문 한 번) / `sse` (`speech.audio.delta` · `speech.audio.done` 이벤트) |
+| `emotion` | string | - | 확장. 감정 프리셋 (기본: `default`) |
+| `text_lang` | string | - | 확장. `ko` / `ja` / `en` / `auto` (기본: `ko`) |
+| `seed` · `temperature` · `top_k` 등 | | - | 확장. 합성 파라미터 (Swagger 참조) |
+
+오류는 `{"error": {"message", "type", "param", "code"}}` 형식이다.
 
 ### 그 외
 
@@ -257,6 +261,15 @@ docker run --rm --gpus all \
 | `GET /voices/{name}` | Voice 상세 |
 | `GET /voices/{name}/emotions` | 감정 매핑 |
 | `GET /voices/{name}/labels` | ASR 라벨 + 통계 |
+| `POST /voices` · `POST /voices/reload` | voice 폴더 생성 · voice 재스캔 |
+| `POST /voices/{name}/dataset/{stage}/files` · `DELETE /voices/{name}/dataset/{stage}/files/{file}` | 단계 폴더에 파일 올리기 · 지우기 (단계마다 받는 확장자가 다름 — `GET /voices/{name}/dataset` 의 `accepts`) |
+| `POST /voices/{name}/cleanup` | 학습 산출물 정리 (`dry_run` 으로 미리보기) |
+| `GET /voices/{name}/dataset` | 학습 단계별 산출물 요약 (파일 수 · 용량) |
+| `GET /voices/{name}/dataset/{stage}/files` | 단계 폴더의 파일 목록 · 내용 (오디오 · 텍스트) |
+| `GET /voices/{name}/dataset/text` · `semantic` · `curves` | step2 음소 · semantic 토큰 · 학습 곡선 |
+| `POST /jobs` · `GET /jobs` · `GET /jobs/{id}` | 파이프라인 job 등록 · 목록 · 상태 |
+| `GET /jobs/{id}/log` · `POST /jobs/{id}/cancel` | job 로그 읽기 · 취소 |
+| `GET /voice-checker/model` | Voice Checker 분류 모델 현황 |
 | `GET /review` | ASR 라벨 검수 UI |
 | `GET /health` | 헬스 체크 |
 | `GET /metrics` | Prometheus 메트릭 |
@@ -322,6 +335,8 @@ voice_checker:                     # 선택 — CNN 품질 분류기 (학습 후
 | 변수 | 의미 |
 |---|---|
 | `TTS_MODE` | `infer` 면 학습 명령 거부. Docker stage 가 자동 설정 |
+| `TTS_JOBS_DIR` | 파이프라인 job 의 상태와 로그를 보관하는 폴더 |
+| `TTS_MODEL_IDLE_UNLOAD_SECONDS` | 마지막 합성 이후 이 시간(초)이 지나면 모델을 VRAM 에서 내린다. `0` 이면 내리지 않는다 |
 | `TTS_SERVICE_CONFIG` | 로드된 config.yaml 절대경로 (서브프로세스에 전달용) |
 
 ---

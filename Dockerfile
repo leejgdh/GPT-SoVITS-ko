@@ -136,7 +136,7 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION} AS train
 WORKDIR /app/module-services/tts-service/GPT-SoVITS-ko
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.12 \
+        python3.12 libpython3.12 \
         ffmpeg libsndfile1 \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
     && ln -sf /usr/bin/python3 /usr/bin/python \

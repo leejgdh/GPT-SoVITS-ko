@@ -15,6 +15,10 @@ def build_parser() -> argparse.ArgumentParser:
     def _add_common(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("-v", "--verbose", action="store_true", help="Debug logging")
         sp.add_argument("-c", "--config", default="config.yaml", help="설정 파일 경로")
+        sp.add_argument(
+            "--no-server", action="store_true",
+            help="학습 명령이 백그라운드 서버를 띄우지 않는다 (서버가 이미 떠 있을 때)",
+        )
 
     def _add_voice_dir(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--voice-dir", required=True, help="캐릭터 음성 폴더")
